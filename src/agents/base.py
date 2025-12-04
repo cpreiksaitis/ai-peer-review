@@ -137,17 +137,19 @@ class BaseReviewerAgent(ABC):
         for msg in self.conversation_history:
             messages.append({"role": msg.role, "content": msg.content})
 
-        # Add current user message (with PDF if provided)
-        if pdf_base64:
-            # Correct LiteLLM format for PDF vision
+        # Add current user message (with PDF if provided and not empty)
+        if pdf_base64 and len(pdf_base64) > 100:
+            # Anthropic/Claude document format
             messages.append({
                 "role": "user",
                 "content": [
                     {"type": "text", "text": user_content},
                     {
-                        "type": "file",
-                        "file": {
-                            "file_data": f"data:application/pdf;base64,{pdf_base64}",
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": pdf_base64,
                         }
                     },
                 ]
