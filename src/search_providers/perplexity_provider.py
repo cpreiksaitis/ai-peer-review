@@ -20,18 +20,16 @@ class PerplexitySearchProvider(SearchProvider):
     
     @property
     def client(self):
-        """Lazy load Perplexity client."""
+        """Lazy load Perplexity client using OpenAI SDK."""
         if self._client is None:
-            try:
-                from perplexity import Perplexity
-                self._client = Perplexity()
-            except ImportError:
-                # Fall back to OpenAI-compatible client
-                from openai import OpenAI
-                self._client = OpenAI(
-                    api_key=os.environ.get("PERPLEXITY_API_KEY"),
-                    base_url="https://api.perplexity.ai",
-                )
+            from openai import OpenAI
+            api_key = os.environ.get("PERPLEXITY_API_KEY")
+            if not api_key:
+                raise ValueError("PERPLEXITY_API_KEY not set")
+            self._client = OpenAI(
+                api_key=api_key,
+                base_url="https://api.perplexity.ai",
+            )
         return self._client
     
     def is_available(self) -> bool:
@@ -77,19 +75,11 @@ Manuscript to find related papers for:
 Return exactly {max_results} papers, prioritizing methodological comparators and direct competitors."""
 
         try:
-            # Build message content - use PDF if available
-            if pdf_base64:
-                user_content = [
-                    {"type": "text", "text": search_instruction},
-                    {
-                        "type": "file_url",
-                        "file_url": {"url": pdf_base64}  # Just base64 string, no prefix
-                    },
-                ]
-            else:
-                user_content = search_instruction
+            # Build message content - text only for now (Perplexity PDF support is limited)
+            user_content = search_instruction
             
-            # Use Perplexity's academic search mode via extra_body
+            # Use Perplexity with web search enabled
+            # Focus on academic domains via search_domain_filter
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -100,8 +90,17 @@ Return exactly {max_results} papers, prioritizing methodological comparators and
                     {"role": "user", "content": user_content}
                 ],
                 extra_body={
-                    "search_mode": "academic",  # KEY: Use academic search mode
-                    "web_search_options": {"search_context_size": "high"},
+                    "search_domain_filter": [
+                        "pubmed.ncbi.nlm.nih.gov",
+                        "scholar.google.com",
+                        "sciencedirect.com",
+                        "nature.com",
+                        "nejm.org",
+                        "thelancet.com",
+                        "jamanetwork.com",
+                        "bmj.com",
+                    ],
+                    "return_citations": True,
                 },
             )
             
