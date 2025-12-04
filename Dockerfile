@@ -18,13 +18,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY src/ src/
 COPY config.yaml .
+COPY start.sh .
 
-# Create data directory
-RUN mkdir -p data
+# Create data directory and make start script executable
+RUN mkdir -p data && chmod +x start.sh
 
 # Expose port (Railway uses $PORT)
 EXPOSE 8000
 
-# Run production server - explicit shell for variable expansion
-CMD ["/bin/sh", "-c", "uvicorn src.web.production.app:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Run production server via start script
+CMD ["./start.sh"]
 
