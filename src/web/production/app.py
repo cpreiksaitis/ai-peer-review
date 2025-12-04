@@ -131,15 +131,18 @@ def get_available_providers() -> list[dict]:
 async def startup():
     """Initialize database and apply saved settings."""
     global db_engine, session_maker
+    print("[DEBUG] Starting up application...")
     
     from src.database import init_async_db, get_async_session_maker
     
     db_engine = await init_async_db()
     session_maker = get_async_session_maker(db_engine)
+    print("[DEBUG] Database initialized")
     
     # Apply saved settings
     settings = load_settings()
     apply_settings(settings)
+    print("[DEBUG] Settings applied, startup complete")
 
 
 @app.on_event("shutdown")
@@ -296,6 +299,7 @@ async def upload_manuscript(
         pdf_base64 = manuscript.get("pdf_base64") if use_pdf_vision else None
         
         # Create database record
+        print(f"[DEBUG] Creating database record for {file.filename}")
         async with session_maker() as session:
             review = await create_review(
                 session=session,
@@ -304,15 +308,27 @@ async def upload_manuscript(
                 manuscript_text=manuscript_text,
             )
             review_id = review.id
+        print(f"[DEBUG] Created review with id={review_id}")
         
         # Start background review task
-        task = asyncio.create_task(
-            run_review_task(
-                review_id, manuscript_text, file.filename,
-                search_literature, pdf_base64, show_live_output
+        print(f"[DEBUG] Creating background task for review_id={review_id}")
+        try:
+            task = asyncio.create_task(
+                run_review_task(
+                    review_id, manuscript_text, file.filename,
+                    search_literature, pdf_base64, show_live_output
+                )
             )
-        )
-        active_reviews[review_id] = task
+            # Add error callback to catch unhandled exceptions
+            def task_done_callback(t):
+                if t.exception():
+                    print(f"[ERROR] Background task failed: {t.exception()}")
+            task.add_done_callback(task_done_callback)
+            active_reviews[review_id] = task
+            print(f"[DEBUG] Task created and stored, returning response")
+        except Exception as e:
+            print(f"[ERROR] Failed to create task: {e}")
+            raise
         
         return JSONResponse({
             "success": True,
