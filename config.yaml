@@ -10,14 +10,14 @@
 #   GPT: gpt-5-mini, gpt-5.1-chat-latest, gpt-5-nano
 #   Gemini: gemini/gemini-3-pro-preview, gemini/gemini-flash-latest, gemini/gemini-flash-lite-latest
 
-# Optimal configuration (based on A/B testing across 4 papers, 18 configs)
-# midtier_communication achieved highest score/$ ratio (96.7) with avg score 8.82
+# Using Claude-only config for Railway deployment reliability
+# (OpenAI connection issues on Railway)
 models:
   orchestrator: "claude-haiku-4-5"
-  methodologist: "gpt-5-nano"
-  domain_expert: "gemini/gemini-flash-lite-latest"
-  communication: "gpt-5-mini"  # Mid-tier upgrade - highest impact agent
-  ethics: "gpt-5-nano"
+  methodologist: "claude-haiku-4-5"
+  domain_expert: "claude-haiku-4-5"
+  communication: "claude-haiku-4-5"
+  ethics: "claude-haiku-4-5"
 
 # Debate configuration
 debate:
