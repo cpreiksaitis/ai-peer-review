@@ -336,9 +336,16 @@ async def run_review_task(
     show_live_output: bool = False,
 ):
     """Background task to run the review process."""
-    from src.config import load_config
-    from src.database import update_review_results, update_review_status
-    from src.orchestrator import create_orchestrator_from_config
+    print(f"[DEBUG] Starting review task for review_id={review_id}")
+    
+    try:
+        from src.config import load_config
+        from src.database import update_review_results, update_review_status
+        from src.orchestrator import create_orchestrator_from_config
+        print("[DEBUG] Imports successful")
+    except Exception as e:
+        print(f"[ERROR] Import failed: {e}")
+        raise
     
     # Initialize live output store
     if show_live_output:
@@ -350,10 +357,16 @@ async def run_review_task(
     
     async with session_maker() as session:
         try:
+            print(f"[DEBUG] Updating status to initializing...")
             await update_review_status(session, review_id, "processing: initializing...")
             
+            print("[DEBUG] Loading config...")
             config = load_config()
+            print(f"[DEBUG] Config loaded: {list(config.keys())}")
+            
+            print("[DEBUG] Creating orchestrator...")
             orchestrator = create_orchestrator_from_config(config)
+            print("[DEBUG] Orchestrator created successfully")
             
             # Set up callbacks
             import threading
@@ -384,6 +397,7 @@ async def run_review_task(
             
             # Run review
             import concurrent.futures
+            print(f"[DEBUG] Starting review execution (search_literature={do_literature_search}, pdf_vision={pdf_base64 is not None})")
             
             async def run_with_status_updates():
                 with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -429,6 +443,9 @@ async def run_review_task(
                 del live_output_store[review_id]
         
         except Exception as e:
+            import traceback
+            print(f"[ERROR] Review task failed: {e}")
+            print(f"[ERROR] Traceback: {traceback.format_exc()}")
             await update_review_status(session, review_id, f"failed: {str(e)[:100]}")
             if review_id in live_output_store:
                 del live_output_store[review_id]
