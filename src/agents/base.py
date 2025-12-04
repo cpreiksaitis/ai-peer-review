@@ -129,16 +129,31 @@ class BaseReviewerAgent(ABC):
         """Get the cost tracker to use."""
         return self.cost_tracker or get_global_tracker()
 
-    def _build_messages(self, user_content: str) -> list[dict[str, str]]:
-        """Build the messages list for the LLM call."""
+    def _build_messages(self, user_content: str, pdf_base64: str | None = None) -> list[dict]:
+        """Build the messages list for the LLM call, optionally with PDF."""
         messages = [{"role": "system", "content": self.system_prompt}]
 
         # Add conversation history
         for msg in self.conversation_history:
             messages.append({"role": msg.role, "content": msg.content})
 
-        # Add current user message
-        messages.append({"role": "user", "content": user_content})
+        # Add current user message (with PDF if provided)
+        if pdf_base64:
+            # Correct LiteLLM format for PDF vision
+            messages.append({
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": user_content},
+                    {
+                        "type": "file",
+                        "file": {
+                            "file_data": f"data:application/pdf;base64,{pdf_base64}",
+                        }
+                    },
+                ]
+            })
+        else:
+            messages.append({"role": "user", "content": user_content})
 
         return messages
 

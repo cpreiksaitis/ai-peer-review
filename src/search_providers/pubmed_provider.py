@@ -131,12 +131,30 @@ class PubMedSearchProvider(SearchProvider):
             )
     
     def _generate_queries(self, manuscript_text: str, pdf_base64: Optional[str] = None) -> list[str]:
-        """Generate search queries using LLM - text only for reliability."""
+        """Generate search queries using LLM, with PDF vision if available."""
         from src.prompts import LITERATURE_QUERY_PROMPT
         
         try:
-            # Use text-only for query generation (more reliable)
             prompt_text = f"{LITERATURE_QUERY_PROMPT}\n\n## Manuscript\n{manuscript_text[:8000]}"
+            
+            # Use PDF vision if available and model supports it
+            if pdf_base64:
+                model = "claude-haiku-4-5"  # Supports PDF vision
+                # Correct LiteLLM format for PDF
+                user_content = [
+                    {"type": "text", "text": prompt_text},
+                    {
+                        "type": "file",
+                        "file": {
+                            "file_data": f"data:application/pdf;base64,{pdf_base64}",
+                        }
+                    },
+                ]
+                print(f"[DEBUG] _generate_queries: Using {model} with PDF vision")
+            else:
+                model = self.model
+                user_content = prompt_text
+                print(f"[DEBUG] _generate_queries: Using {model} text-only")
             
             messages = [
                 {
@@ -145,13 +163,12 @@ class PubMedSearchProvider(SearchProvider):
                 },
                 {
                     "role": "user",
-                    "content": prompt_text
+                    "content": user_content
                 }
             ]
             
-            print(f"[DEBUG] _generate_queries: Calling {self.model} for query generation")
             response = litellm.completion(
-                model=self.model,
+                model=model,
                 messages=messages,
                 temperature=0.3,
             )
