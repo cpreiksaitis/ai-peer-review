@@ -134,8 +134,11 @@ Focus on: similar methodology, same research question, recent related work, and 
         """Extract paper information from response text."""
         results = []
         
-        # Split by paper markers
-        paper_sections = re.split(r'\n\s*\*\*Paper \d+\*\*', text)
+        # Split by paper markers - handle multiple formats
+        # Format 1: **Paper 1**
+        # Format 2: ## 1. Title
+        # Format 3: 1. **Title**
+        paper_sections = re.split(r'\n\s*(?:\*\*Paper \d+\*\*|## \d+\.|^\d+\.\s+\*\*)', text, flags=re.MULTILINE)
         
         for section in paper_sections[1:max_results+1]:
             result = self._parse_paper_section(section)
@@ -146,48 +149,49 @@ Focus on: similar methodology, same research question, recent related work, and 
     
     def _parse_paper_section(self, section: str) -> Optional[SearchResult]:
         """Parse a text section into a SearchResult."""
-        # Extract title
-        title_match = re.search(r'-\s*Title[:\s]*(.+?)(?:\n|$)', section, re.I)
-        title = title_match.group(1).strip() if title_match else ""
+        # Extract title - handle multiple formats
+        title = ""
+        # Format 1: - Title: xxx or Title: xxx
+        title_match = re.search(r'[-\*]*\s*Title[:\s]+(.+?)(?:\n|$)', section, re.I)
+        if title_match:
+            title = title_match.group(1).strip().strip('*')
+        # Format 2: First line after ## N. (the title itself)
+        if not title:
+            first_line = section.strip().split('\n')[0]
+            # Remove markdown bold
+            title = re.sub(r'\*\*(.+?)\*\*', r'\1', first_line).strip()
         
         if not title or len(title) < 10:
             return None
         
-        # Extract authors
-        authors_match = re.search(r'-\s*Authors?[:\s]*(.+?)(?:\n|$)', section, re.I)
+        # Extract authors - handle **Authors:** format
+        authors_match = re.search(r'\*?\*?Authors?\*?\*?[:\s]+(.+?)(?:\n|$)', section, re.I)
         authors = []
         if authors_match:
-            authors = [a.strip() for a in authors_match.group(1).split(',')][:5]
+            authors_str = authors_match.group(1).strip()
+            authors = [a.strip() for a in re.split(r',|;| et al', authors_str) if a.strip()][:5]
         
-        # Extract PMID
-        pmid_match = re.search(r'-\s*PMID[:\s]*(\d+)', section, re.I)
+        # Extract PMID - handle **PMID:** format
+        pmid_match = re.search(r'\*?\*?PMID\*?\*?[:\s]*(\d+)', section, re.I)
         pmid = pmid_match.group(1) if pmid_match else None
         
-        # Extract DOI
-        doi_match = re.search(r'-\s*DOI[:\s]*(10\.[^\s\n]+)', section, re.I)
+        # Extract DOI - handle **DOI:** format
+        doi_match = re.search(r'\*?\*?DOI\*?\*?[:\s]*(10\.[^\s\n]+)', section, re.I)
         doi = doi_match.group(1) if doi_match else None
         
-        # Extract journal
-        journal_match = re.search(r'-\s*Journal[:\s]*(.+?)(?:\n|$)', section, re.I)
-        journal = journal_match.group(1).strip() if journal_match else None
+        # Extract journal - handle **Journal:** format
+        journal_match = re.search(r'\*?\*?Journal\*?\*?[:\s]*(.+?)(?:\n|$)', section, re.I)
+        journal = journal_match.group(1).strip().strip('*') if journal_match else None
         
-        # Extract year
-        year_match = re.search(r'-\s*Year[:\s]*(\d{4})', section, re.I)
+        # Extract year - handle **Year:** format or standalone year
+        year_match = re.search(r'\*?\*?Year\*?\*?[:\s]*(\d{4})', section, re.I)
+        if not year_match:
+            year_match = re.search(r'\b(20\d{2})\b', section)
         pub_date = year_match.group(1) if year_match else None
         
-        # Extract abstract/summary
-        abstract_match = re.search(r'-\s*Abstract[:\s]*(.+?)(?:\n-|\nRelevance|$)', section, re.I | re.DOTALL)
-        abstract = abstract_match.group(1).strip()[:500] if abstract_match else ""
-        
-        # Extract relevance
-        relevance_match = re.search(r'-\s*Relevance[:\s]*(.+?)(?:\n-|\n\*\*|$)', section, re.I | re.DOTALL)
+        # Extract relevance explanation
+        relevance_match = re.search(r'\*?\*?Relevance\*?\*?[:\s]*(.+?)(?:\n\n|##|$)', section, re.I | re.DOTALL)
         relevance_reason = relevance_match.group(1).strip() if relevance_match else ""
-        
-        # Extract type (methodology/competitor/foundational/etc)
-        type_match = re.search(r'-\s*Type[:\s]*(.+?)(?:\n|$)', section, re.I)
-        paper_type = type_match.group(1).strip() if type_match else ""
-        if paper_type:
-            relevance_reason = f"[{paper_type}] {relevance_reason}"
         
         # Build URL
         url = ""

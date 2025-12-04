@@ -76,13 +76,8 @@ Focus on: similar methodology, same research question, recent related work.
             }
         
         try:
-            # Build content - use PDF vision if available
+            # Build content - text only (OpenAI Responses API doesn't support PDF in this format)
             content = [{"type": "input_text", "text": search_instruction}]
-            if pdf_base64:
-                content.insert(0, {
-                    "type": "input_file",
-                    "file_data": f"data:application/pdf;base64,{pdf_base64}"
-                })
             
             # Call OpenAI Responses API
             response = self.client.responses.create(
