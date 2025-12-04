@@ -179,12 +179,13 @@ async def get_review(session: AsyncSession, review_id: int) -> Optional[ReviewRe
     return await session.get(ReviewRecord, review_id)
 
 
-async def get_all_reviews(session: AsyncSession) -> list[ReviewRecord]:
-    """Get all reviews."""
+async def get_all_reviews(session: AsyncSession, limit: int | None = None) -> list[ReviewRecord]:
+    """Get all reviews, optionally limited."""
     from sqlalchemy import select
-    result = await session.execute(
-        select(ReviewRecord).order_by(ReviewRecord.created_at.desc())
-    )
+    query = select(ReviewRecord).order_by(ReviewRecord.created_at.desc())
+    if limit:
+        query = query.limit(limit)
+    result = await session.execute(query)
     return list(result.scalars().all())
 
 
