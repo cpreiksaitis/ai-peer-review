@@ -131,62 +131,52 @@ class PubMedSearchProvider(SearchProvider):
             )
     
     def _generate_queries(self, manuscript_text: str, pdf_base64: Optional[str] = None) -> list[str]:
-        """Generate search queries using LLM, optionally with PDF vision."""
+        """Generate search queries using LLM - text only for reliability."""
         from src.prompts import LITERATURE_QUERY_PROMPT
         
         try:
+            # Use text-only for query generation (more reliable)
             prompt_text = f"{LITERATURE_QUERY_PROMPT}\n\n## Manuscript\n{manuscript_text[:8000]}"
             
-            # Build messages with PDF vision if available
-            if pdf_base64:
-                # Use a vision-capable model for PDF analysis
-                messages = [
-                    {
-                        "role": "system",
-                        "content": "You are a research assistant helping find related academic papers. Analyze the manuscript including figures and tables."
-                    },
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt_text},
-                            {"type": "file", "file": {"file_data": f"data:application/pdf;base64,{pdf_base64}"}}
-                        ]
-                    }
-                ]
-                # Use a vision-capable model
-                model = "claude-haiku-4-5"  # Supports PDF vision
-            else:
-                messages = [
-                    {
-                        "role": "system",
-                        "content": "You are a research assistant helping find related academic papers."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt_text
-                    }
-                ]
-                model = self.model
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are a research assistant helping find related academic papers on PubMed."
+                },
+                {
+                    "role": "user",
+                    "content": prompt_text
+                }
+            ]
             
+            print(f"[DEBUG] _generate_queries: Calling {self.model} for query generation")
             response = litellm.completion(
-                model=model,
+                model=self.model,
                 messages=messages,
                 temperature=0.3,
             )
             
             content = response.choices[0].message.content
+            print(f"[DEBUG] _generate_queries: Got response: {content[:200]}...")
             
             # Parse JSON array
             json_match = re.search(r"\[.*\]", content, re.DOTALL)
             if json_match:
                 queries = json.loads(json_match.group())
-                return [q for q in queries if isinstance(q, str)][:7]
+                result = [q for q in queries if isinstance(q, str)][:7]
+                print(f"[DEBUG] _generate_queries: Parsed {len(result)} queries from JSON")
+                return result
             
             # Fallback: parse as lines
             lines = content.strip().split("\n")
-            return [l.strip().strip("-").strip('"') for l in lines if l.strip() and len(l.strip()) > 10][:5]
+            result = [l.strip().strip("-").strip('"').strip("0123456789. ") for l in lines if l.strip() and len(l.strip()) > 10][:5]
+            print(f"[DEBUG] _generate_queries: Parsed {len(result)} queries from lines")
+            return result
             
-        except Exception:
-            # Ultimate fallback: extract keywords from manuscript
-            return [manuscript_text[:200]]
+        except Exception as e:
+            print(f"[ERROR] _generate_queries failed: {e}")
+            # Ultimate fallback: extract key terms from title/abstract
+            words = manuscript_text[:500].split()
+            # Return first ~50 words as a search phrase
+            return [" ".join(words[:50])]
 
