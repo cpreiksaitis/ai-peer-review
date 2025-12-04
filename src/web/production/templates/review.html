@@ -130,10 +130,10 @@
             </div>
             {% if review.total_cost_usd %}
             <div class="review-meta-item">
-                💰 ${{ "%.4f"|format(review.total_cost_usd) }}
+                💰 ${{ "%.4f" % (review.total_cost_usd or 0) }}
             </div>
             <div class="review-meta-item">
-                🔢 {{ "{:,}"|format(review.total_tokens) }} tokens
+                🔢 {{ (review.total_tokens or 0)|int }} tokens
             </div>
             {% endif %}
         </div>

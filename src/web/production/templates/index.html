@@ -131,7 +131,7 @@
                 
                 {% if review.total_cost_usd %}
                 <p class="text-small text-muted mt-1">
-                    Cost: ${{ "%.4f"|format(review.total_cost_usd) }} · {{ "{:,}"|format(review.total_tokens) }} tokens
+                    Cost: ${{ "%.4f" % (review.total_cost_usd or 0) }} · {{ (review.total_tokens or 0)|int }} tokens
                 </p>
                 {% endif %}
             </div>
