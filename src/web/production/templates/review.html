@@ -181,8 +181,8 @@
 
 {% if review.debate_rounds %}
 <div id="tab-debate" class="tab-content">
-    {% for round_num, round_data in review.debate_rounds | enumerate(start=1) %}
-    <h3 style="margin-bottom: 1rem;">Round {{ round_num }}</h3>
+    {% for round_data in review.debate_rounds %}
+    <h3 style="margin-bottom: 1rem;">Round {{ loop.index }}</h3>
     {% for agent_name, response in round_data.items() %}
     <div class="agent-review">
         <div class="agent-name">{{ agent_name }}</div>
@@ -227,4 +227,3 @@
     }
 </script>
 {% endblock %}
-
