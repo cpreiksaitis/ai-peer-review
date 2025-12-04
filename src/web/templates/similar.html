@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+
+{% block title %}Find Similar Papers{% endblock %}
+
+{% block content %}
+<div class="grid grid-2" style="grid-template-columns: 400px 1fr;">
+    <!-- Upload Section -->
+    <div>
+        <div class="card">
+            <h2 class="card-title mb-2">📄 Find Similar Papers</h2>
+            <p class="text-muted mb-2">Upload a manuscript PDF to find related work</p>
+            
+            <form id="upload-form" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label class="form-label">Manuscript PDF</label>
+                    <div class="file-upload" id="file-drop-zone">
+                        <div class="file-upload-icon">📄</div>
+                        <div class="file-upload-text">
+                            <strong>Drop PDF here</strong><br>
+                            or click to browse
+                        </div>
+                        <input type="file" name="file" id="file-input" accept=".pdf" style="display: none;">
+                    </div>
+                    <p id="file-name" class="text-small text-muted mt-1"></p>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Search Provider</label>
+                    <select name="provider" class="form-input" id="provider-select">
+                        {% for p in providers %}
+                        <option value="{{ p.name }}" 
+                                {% if not p.available %}disabled{% endif %}
+                                {% if p.name == 'pubmed' %}selected{% endif %}>
+                            {{ p.display_name }}{% if not p.available %} (not configured){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <p id="provider-desc" class="text-small text-muted mt-1"></p>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Max Results</label>
+                    <input type="number" name="max_results" class="form-input" value="10" min="5" max="30">
+                </div>
+                
+                <div class="form-group">
+                    <label class="flex items-center gap-1">
+                        <input type="checkbox" name="focus_pubmed" checked id="focus-pubmed">
+                        <span class="text-small">Focus on PubMed/academic sources</span>
+                    </label>
+                </div>
+                
+                <button type="submit" class="btn btn-primary" style="width: 100%;" id="search-btn">
+                    🔍 Find Similar Papers
+                </button>
+            </form>
+        </div>
+        
+        <!-- Provider Info -->
+        <div class="card">
+            <h3 class="card-title mb-2">Search Providers</h3>
+            <div class="text-small" style="color: var(--text-secondary);">
+                {% for p in providers %}
+                <div style="padding: 0.5rem; background: var(--bg-tertiary); border-radius: 6px; margin-bottom: 0.5rem;">
+                    <div class="flex justify-between items-center">
+                        <strong>{{ p.display_name }}</strong>
+                        {% if p.available %}
+                            <span class="badge badge-completed">Available</span>
+                        {% else %}
+                            <span class="badge badge-pending">Not Configured</span>
+                        {% endif %}
+                    </div>
+                    <p style="margin-top: 0.25rem; font-size: 0.75rem; opacity: 0.8;">{{ p.description }}</p>
+                    {% if p.agentic %}
+                        <span style="font-size: 0.7rem; color: var(--accent-purple);">🤖 Agentic (iterative search)</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- Generated Queries (populated after search) -->
+        <div class="card" id="queries-card" style="display: none;">
+            <h3 class="card-title mb-2">Generated Queries</h3>
+            <div id="queries-list"></div>
+        </div>
+    </div>
+    
+    <!-- Results -->
+    <div>
+        <div class="flex justify-between items-center mb-2">
+            <h2 style="font-size: 1.5rem;" id="results-title">Similar Papers</h2>
+            <span id="result-count" class="text-muted"></span>
+        </div>
+        
+        <div id="results-container">
+            <div class="card">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📚</div>
+                    <h3>Upload a PDF to find similar papers</h3>
+                    <p class="text-muted">The AI will analyze your manuscript and search PubMed for related work</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const fileInput = document.getElementById('file-input');
+    const fileDropZone = document.getElementById('file-drop-zone');
+    const fileName = document.getElementById('file-name');
+    const uploadForm = document.getElementById('upload-form');
+    const resultsContainer = document.getElementById('results-container');
+    const resultCount = document.getElementById('result-count');
+    const resultsTitle = document.getElementById('results-title');
+    const queriesCard = document.getElementById('queries-card');
+    const queriesList = document.getElementById('queries-list');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingText = document.getElementById('loading-text');
+    const searchBtn = document.getElementById('search-btn');
+    const providerSelect = document.getElementById('provider-select');
+    const providerDesc = document.getElementById('provider-desc');
+    
+    // Provider descriptions
+    const providerDescriptions = {
+        'openai': 'GPT with web search tool - can iteratively refine queries',
+        'gemini': 'Gemini with Google Search grounding',
+        'claude': 'Claude with web search tool',
+        'perplexity': 'Native search-augmented Sonar model',
+        'pubmed': 'Direct PubMed API with LLM query generation (fastest)'
+    };
+    
+    providerSelect.addEventListener('change', () => {
+        providerDesc.textContent = providerDescriptions[providerSelect.value] || '';
+    });
+    providerDesc.textContent = providerDescriptions[providerSelect.value] || '';
+    
+    // File drop zone
+    fileDropZone.addEventListener('click', () => fileInput.click());
+    
+    fileDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fileDropZone.classList.add('dragover');
+    });
+    
+    fileDropZone.addEventListener('dragleave', () => {
+        fileDropZone.classList.remove('dragover');
+    });
+    
+    fileDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileDropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            updateFileName();
+        }
+    });
+    
+    fileInput.addEventListener('change', updateFileName);
+    
+    function updateFileName() {
+        if (fileInput.files.length) {
+            fileName.textContent = '📎 ' + fileInput.files[0].name;
+        }
+    }
+    
+    // Form submission
+    uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (!fileInput.files.length) {
+            alert('Please select a PDF file');
+            return;
+        }
+        
+        const formData = new FormData(uploadForm);
+        formData.append('focus_pubmed', document.getElementById('focus-pubmed').checked);
+        
+        const provider = providerSelect.value;
+        const isAgentic = ['openai', 'gemini', 'claude', 'perplexity'].includes(provider);
+        
+        searchBtn.disabled = true;
+        loadingText.textContent = 'Extracting text from PDF...';
+        loadingOverlay.classList.add('active');
+        
+        // Update loading messages based on provider
+        const stages = isAgentic ? [
+            'Extracting text from PDF...',
+            'AI is analyzing the manuscript...',
+            'Agent is searching for papers...',
+            'Evaluating and refining search...',
+            'Compiling final results...'
+        ] : [
+            'Extracting text from PDF...',
+            'Generating search queries with AI...',
+            'Searching PubMed...',
+            'Scoring paper relevance...',
+            'Ranking results...'
+        ];
+        let stageIndex = 0;
+        const stageInterval = setInterval(() => {
+            stageIndex = (stageIndex + 1) % stages.length;
+            loadingText.textContent = stages[stageIndex];
+        }, isAgentic ? 5000 : 3000);  // Agentic takes longer
+        
+        try {
+            const response = await fetch('/api/similar/find', {
+                method: 'POST',
+                body: formData
+            });
+            
+            clearInterval(stageInterval);
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Search failed');
+            }
+            
+            const data = await response.json();
+            displayResults(data);
+            
+        } catch (error) {
+            clearInterval(stageInterval);
+            resultsContainer.innerHTML = `
+                <div class="card">
+                    <div class="empty-state" style="padding: 2rem;">
+                        <div class="empty-state-icon">❌</div>
+                        <h3>Search Failed</h3>
+                        <p class="text-muted">${error.message}</p>
+                    </div>
+                </div>
+            `;
+            resultCount.textContent = '';
+            queriesCard.style.display = 'none';
+        } finally {
+            loadingOverlay.classList.remove('active');
+            searchBtn.disabled = false;
+        }
+    });
+    
+    function displayResults(data) {
+        // Update title
+        const titleText = data.manuscript_title || 'Uploaded PDF';
+        resultsTitle.textContent = `Similar to: ${titleText.substring(0, 50)}${titleText.length > 50 ? '...' : ''}`;
+        resultCount.textContent = `${data.papers.length} papers via ${data.provider || 'PubMed'}`;
+        
+        // Show generated queries or reasoning
+        queriesCard.style.display = 'block';
+        
+        if (data.reasoning && data.provider !== 'pubmed') {
+            // Agentic providers show reasoning
+            queriesList.innerHTML = `
+                <div style="padding: 0.75rem; background: var(--bg-tertiary); border-radius: 6px; font-size: 0.8125rem; max-height: 300px; overflow-y: auto;">
+                    <strong style="color: var(--accent-cyan);">🤖 Agent Reasoning:</strong>
+                    <div style="margin-top: 0.5rem; white-space: pre-wrap; line-height: 1.5;">${data.reasoning.substring(0, 1500)}${data.reasoning.length > 1500 ? '...' : ''}</div>
+                </div>
+            `;
+            if (data.queries_used && data.queries_used.length > 0) {
+                queriesList.innerHTML += `
+                    <div style="margin-top: 0.75rem; padding: 0.5rem; background: var(--bg-tertiary); border-radius: 6px;">
+                        <strong style="font-size: 0.75rem; color: var(--text-secondary);">Searches performed:</strong>
+                        ${data.queries_used.map(q => `<div style="font-size: 0.75rem; padding: 0.25rem 0; border-bottom: 1px solid var(--border-color);">${q}</div>`).join('')}
+                    </div>
+                `;
+            }
+        } else if (data.queries_generated) {
+            // PubMed provider shows queries
+            queriesList.innerHTML = data.queries_generated.map((q, i) => {
+                const result = data.search_results ? data.search_results[i] : null;
+                const countBadge = result ? 
+                    (result.error ? `<span class="badge badge-failed">Error</span>` : 
+                     `<span class="badge badge-completed">${result.count} found</span>`) : '';
+                return `
+                    <div style="padding: 0.5rem; background: var(--bg-tertiary); border-radius: 6px; margin-bottom: 0.5rem; font-size: 0.8125rem;">
+                        <div class="flex justify-between items-center">
+                            <span>${q}</span>
+                            ${countBadge}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Show papers
+        if (data.papers.length === 0) {
+            resultsContainer.innerHTML = `
+                <div class="card">
+                    <div class="empty-state" style="padding: 2rem;">
+                        <div class="empty-state-icon">📭</div>
+                        <h3>No Similar Papers Found</h3>
+                        <p class="text-muted">Try a different manuscript or check the search queries</p>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+        
+        let html = '';
+        data.papers.forEach((paper, index) => {
+            const scoreClass = paper.relevance_score >= 7 ? 'badge-completed' : 
+                              paper.relevance_score >= 5 ? 'badge-minor' : 
+                              paper.relevance_score >= 3 ? 'badge-pending' : 'badge-failed';
+            
+            const authors = paper.authors.join(', ') + (paper.authors.length >= 3 ? ' et al.' : '');
+            
+            html += `
+                <div class="card">
+                    <div class="card-header">
+                        <div style="flex: 1;">
+                            <h3 class="card-title">${index + 1}. ${paper.title}</h3>
+                            <p class="card-subtitle">${authors}</p>
+                        </div>
+                        ${paper.relevance_score > 0 ? `
+                            <span class="badge ${scoreClass}" style="font-size: 0.9rem;">
+                                ${paper.relevance_score.toFixed(1)}/10
+                            </span>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="flex gap-2 mb-1 text-small">
+                        <span class="text-muted">PMID: ${paper.pmid}</span>
+                        <span class="text-muted">|</span>
+                        <span class="text-muted">${paper.journal}</span>
+                    </div>
+                    
+                    ${paper.relevance_reason ? `
+                        <p style="color: var(--accent-cyan); font-size: 0.875rem; margin-bottom: 0.75rem; padding: 0.5rem; background: rgba(6, 182, 212, 0.1); border-radius: 6px;">
+                            💡 ${paper.relevance_reason}
+                        </p>
+                    ` : ''}
+                    
+                    ${paper.abstract ? `
+                        <p class="text-small text-muted" style="line-height: 1.6;">
+                            ${paper.abstract}${paper.abstract.length >= 500 ? '...' : ''}
+                        </p>
+                    ` : '<p class="text-small text-muted">No abstract available</p>'}
+                    
+                    <div class="mt-1">
+                        <a href="https://pubmed.ncbi.nlm.nih.gov/${paper.pmid}/" target="_blank" 
+                           class="btn btn-secondary btn-sm">View on PubMed →</a>
+                    </div>
+                </div>
+            `;
+        });
+        
+        resultsContainer.innerHTML = html;
+    }
+</script>
+{% endblock %}
+

@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+
+{% block title %}AI Peer Review - Submit Manuscript{% endblock %}
+
+{% block content %}
+<div class="layout-split">
+    <!-- Left: Upload Form -->
+    <div>
+        <div class="card">
+            <h2 class="card-title mb-2">Submit Manuscript</h2>
+            
+            {% if not any_api_configured %}
+            <div class="alert alert-warning">
+                <strong>⚠️ No API keys configured</strong><br>
+                <a href="/settings" style="color: inherit;">Add your API keys</a> to start reviewing manuscripts.
+            </div>
+            {% endif %}
+            
+            <form id="upload-form">
+                <div class="form-group">
+                    <label class="form-label">Title (optional)</label>
+                    <input type="text" name="title" class="form-input" placeholder="Auto-extracted from PDF if blank">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">PDF File</label>
+                    <div class="file-drop" id="file-drop">
+                        <div class="file-drop-icon">📄</div>
+                        <div class="file-drop-text">
+                            <strong>Drop your PDF here</strong><br>
+                            or click to browse
+                        </div>
+                        <input type="file" name="file" id="file-input" accept=".pdf" style="display: none;">
+                    </div>
+                    <p id="file-name" class="text-small text-muted mt-1"></p>
+                </div>
+                
+                <div class="form-group">
+                    <label class="toggle-container">
+                        <input type="checkbox" name="search_literature" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">📚 Literature Search</span>
+                    </label>
+                    <p class="text-small text-muted mt-1">Search PubMed for related papers</p>
+                </div>
+                
+                <div class="form-group">
+                    <label class="toggle-container">
+                        <input type="checkbox" name="use_pdf_vision" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">👁️ PDF Vision</span>
+                    </label>
+                    <p class="text-small text-muted mt-1">Better figure/table analysis</p>
+                </div>
+                
+                <div class="form-group">
+                    <label class="toggle-container">
+                        <input type="checkbox" name="show_live_output">
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">📺 Live Output</span>
+                    </label>
+                    <p class="text-small text-muted mt-1">Show real-time model responses</p>
+                </div>
+                
+                <button type="submit" class="btn btn-primary" style="width: 100%;" {% if not any_api_configured %}disabled{% endif %}>
+                    🚀 Start Review
+                </button>
+            </form>
+        </div>
+        
+        <!-- API Status -->
+        <div class="card mt-2">
+            <h3 class="text-small" style="color: var(--text-muted); margin-bottom: 0.75rem;">API Status</h3>
+            <div class="grid grid-2" style="gap: 0.5rem;">
+                {% for name, status in api_status.items() %}
+                <div style="display: flex; justify-content: space-between; padding: 0.5rem; background: var(--bg-tertiary); border-radius: var(--radius-sm);">
+                    <span class="text-small">{{ name|capitalize }}</span>
+                    <span class="badge {% if status %}badge-success{% else %}badge-muted{% endif %}">
+                        {{ "✓" if status else "—" }}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Right: Recent Reviews -->
+    <div>
+        <div class="card-header">
+            <h2 class="card-title">Recent Reviews</h2>
+            <span class="badge badge-info">{{ reviews|length }} total</span>
+        </div>
+        
+        {% if reviews %}
+        <div class="grid" style="gap: 1rem;">
+            {% for review in reviews %}
+            <div class="card" id="review-card-{{ review.id }}">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">
+                            {{ review.manuscript_title or review.manuscript_filename }}
+                        </h3>
+                        <p class="text-small text-muted">
+                            {{ review.created_at.strftime('%Y-%m-%d %H:%M') if review.created_at else '' }}
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        {% if review.recommendation %}
+                        <span class="badge 
+                            {% if review.recommendation == 'Accept' %}badge-success
+                            {% elif review.recommendation == 'Reject' %}badge-danger
+                            {% elif 'Revision' in review.recommendation %}badge-warning
+                            {% else %}badge-muted{% endif %}">
+                            {{ review.recommendation }}
+                        </span>
+                        {% endif %}
+                        <span class="badge {% if review.status == 'completed' %}badge-success{% elif review.status == 'processing' %}badge-info{% else %}badge-muted{% endif %}">
+                            {{ review.status }}
+                        </span>
+                    </div>
+                </div>
+                
+                {% if review.status == 'completed' %}
+                <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                    <a href="/review/{{ review.id }}" class="btn btn-primary btn-sm">View Review</a>
+                    <button onclick="deleteReview({{ review.id }})" class="btn btn-secondary btn-sm">Delete</button>
+                </div>
+                {% elif review.status.startswith('processing') %}
+                <p class="text-small text-muted mt-1">⏳ {{ review.status }}</p>
+                {% endif %}
+                
+                {% if review.total_cost_usd %}
+                <p class="text-small text-muted mt-1">
+                    Cost: ${{ "%.4f"|format(review.total_cost_usd) }} · {{ "{:,}"|format(review.total_tokens) }} tokens
+                </p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="card text-center" style="padding: 3rem;">
+            <p class="text-muted">No reviews yet. Upload a manuscript to get started.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const uploadForm = document.getElementById('upload-form');
+    const fileInput = document.getElementById('file-input');
+    const fileDrop = document.getElementById('file-drop');
+    const fileName = document.getElementById('file-name');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingText = document.getElementById('loading-text');
+    
+    // File drop handling
+    fileDrop.addEventListener('click', () => fileInput.click());
+    fileDrop.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fileDrop.classList.add('dragover');
+    });
+    fileDrop.addEventListener('dragleave', () => fileDrop.classList.remove('dragover'));
+    fileDrop.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileDrop.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            fileName.textContent = e.dataTransfer.files[0].name;
+        }
+    });
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) {
+            fileName.textContent = fileInput.files[0].name;
+        }
+    });
+    
+    // Form submission
+    uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (!fileInput.files.length) {
+            alert('Please select a PDF file');
+            return;
+        }
+        
+        const formData = new FormData(uploadForm);
+        const showLiveOutput = document.querySelector('[name="show_live_output"]').checked;
+        
+        loadingText.textContent = 'Uploading manuscript...';
+        loadingOverlay.classList.add('active');
+        
+        const liveOutputContainer = document.getElementById('live-output-container');
+        if (showLiveOutput) {
+            liveOutputContainer.classList.add('active');
+        }
+        
+        try {
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                loadingText.textContent = 'Review started...';
+                pollReviewStatus(data.review_id, showLiveOutput);
+            } else {
+                throw new Error(data.detail || 'Upload failed');
+            }
+        } catch (error) {
+            loadingOverlay.classList.remove('active');
+            liveOutputContainer.classList.remove('active');
+            alert('Error: ' + error.message);
+        }
+    });
+    
+    let liveOutputIndex = 0;
+    
+    async function pollReviewStatus(reviewId, showLiveOutput = false) {
+        try {
+            const response = await fetch(`/api/review/${reviewId}/status`);
+            const data = await response.json();
+            
+            if (showLiveOutput) pollLiveOutput(reviewId);
+            
+            if (data.status === 'completed') {
+                loadingOverlay.classList.remove('active');
+                window.location.href = `/review/${reviewId}`;
+            } else if (data.status.startsWith('failed')) {
+                loadingOverlay.classList.remove('active');
+                alert('Review failed: ' + data.status);
+                window.location.reload();
+            } else {
+                let displayStatus = data.status;
+                if (displayStatus.startsWith('Step ')) {
+                    displayStatus = '📋 ' + displayStatus;
+                } else if (displayStatus.includes('initializing')) {
+                    displayStatus = '🚀 Initializing...';
+                }
+                loadingText.textContent = displayStatus;
+                setTimeout(() => pollReviewStatus(reviewId, showLiveOutput), 1500);
+            }
+        } catch (error) {
+            setTimeout(() => pollReviewStatus(reviewId, showLiveOutput), 3000);
+        }
+    }
+    
+    async function pollLiveOutput(reviewId) {
+        try {
+            const response = await fetch(`/api/review/${reviewId}/live-output?since=${liveOutputIndex}`);
+            const data = await response.json();
+            
+            if (data.entries && data.entries.length > 0) {
+                const panel = document.getElementById('live-output-panel');
+                
+                data.entries.forEach(entry => {
+                    const entryEl = document.createElement('div');
+                    entryEl.className = 'live-output-entry';
+                    
+                    const typeLabel = entry.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    
+                    entryEl.innerHTML = `
+                        <div class="live-output-agent">${entry.agent} - ${typeLabel}</div>
+                        <div class="live-output-text">${escapeHtml(entry.content.substring(0, 500))}${entry.content.length > 500 ? '...' : ''}</div>
+                    `;
+                    
+                    panel.appendChild(entryEl);
+                    panel.scrollTop = panel.scrollHeight;
+                });
+                
+                liveOutputIndex = data.total;
+            }
+        } catch (error) {}
+    }
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    async function deleteReview(reviewId) {
+        if (!confirm('Delete this review?')) return;
+        
+        try {
+            const response = await fetch(`/api/review/${reviewId}`, { method: 'DELETE' });
+            if (response.ok) {
+                document.getElementById(`review-card-${reviewId}`).remove();
+            }
+        } catch (error) {
+            alert('Error deleting review');
+        }
+    }
+    
+    // Poll for processing reviews
+    document.querySelectorAll('.badge-info').forEach(badge => {
+        if (badge.textContent.trim() === 'processing') {
+            const card = badge.closest('.card');
+            const reviewId = card.id.replace('review-card-', '');
+            pollReviewStatus(reviewId);
+        }
+    });
+</script>
+{% endblock %}
+

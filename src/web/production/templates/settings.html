@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - API Keys{% endblock %}
+
+{% block head %}
+<style>
+    .settings-section {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .settings-section h3 {
+        font-size: 1rem;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .api-key-input {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .api-key-input input {
+        flex: 1;
+    }
+    
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-left: 0.5rem;
+    }
+    
+    .status-dot.connected {
+        background: var(--accent-success);
+        box-shadow: 0 0 8px var(--accent-success);
+    }
+    
+    .status-dot.disconnected {
+        background: var(--text-muted);
+    }
+    
+    .help-text {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-top: 0.5rem;
+    }
+    
+    .help-text a {
+        color: var(--accent-primary);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 700px; margin: 0 auto;">
+    <h1 style="margin-bottom: 0.5rem;">Settings</h1>
+    <p class="text-muted mb-2">Configure your API keys to enable AI-powered reviews</p>
+    
+    <div class="alert alert-info">
+        <strong>🔒 Security Note:</strong> API keys are stored locally and never sent to external servers other than the respective AI providers.
+    </div>
+    
+    <form id="settings-form">
+        <!-- OpenAI -->
+        <div class="settings-section">
+            <h3>
+                🤖 OpenAI
+                <span class="status-dot {% if api_status.openai %}connected{% else %}disconnected{% endif %}"></span>
+            </h3>
+            <div class="form-group">
+                <label class="form-label">API Key</label>
+                <div class="api-key-input">
+                    <input type="password" name="openai_api_key" class="form-input" 
+                           value="{{ settings.openai_api_key }}" placeholder="sk-...">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="togglePassword(this)">👁️</button>
+                </div>
+                <p class="help-text">
+                    Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI Dashboard</a>
+                </p>
+            </div>
+        </div>
+        
+        <!-- Anthropic -->
+        <div class="settings-section">
+            <h3>
+                🧠 Anthropic (Claude)
+                <span class="status-dot {% if api_status.anthropic %}connected{% else %}disconnected{% endif %}"></span>
+            </h3>
+            <div class="form-group">
+                <label class="form-label">API Key</label>
+                <div class="api-key-input">
+                    <input type="password" name="anthropic_api_key" class="form-input" 
+                           value="{{ settings.anthropic_api_key }}" placeholder="sk-ant-...">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="togglePassword(this)">👁️</button>
+                </div>
+                <p class="help-text">
+                    Get your API key from <a href="https://console.anthropic.com/settings/keys" target="_blank">Anthropic Console</a>
+                </p>
+            </div>
+        </div>
+        
+        <!-- Google -->
+        <div class="settings-section">
+            <h3>
+                🔮 Google (Gemini)
+                <span class="status-dot {% if api_status.google %}connected{% else %}disconnected{% endif %}"></span>
+            </h3>
+            <div class="form-group">
+                <label class="form-label">API Key</label>
+                <div class="api-key-input">
+                    <input type="password" name="google_api_key" class="form-input" 
+                           value="{{ settings.google_api_key }}" placeholder="AIza...">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="togglePassword(this)">👁️</button>
+                </div>
+                <p class="help-text">
+                    Get your API key from <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>
+                </p>
+            </div>
+        </div>
+        
+        <!-- Perplexity -->
+        <div class="settings-section">
+            <h3>
+                🔍 Perplexity
+                <span class="status-dot {% if api_status.perplexity %}connected{% else %}disconnected{% endif %}"></span>
+            </h3>
+            <div class="form-group">
+                <label class="form-label">API Key</label>
+                <div class="api-key-input">
+                    <input type="password" name="perplexity_api_key" class="form-input" 
+                           value="{{ settings.perplexity_api_key }}" placeholder="pplx-...">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="togglePassword(this)">👁️</button>
+                </div>
+                <p class="help-text">
+                    Get your API key from <a href="https://www.perplexity.ai/settings/api" target="_blank">Perplexity Settings</a>
+                </p>
+            </div>
+        </div>
+        
+        <!-- PubMed -->
+        <div class="settings-section">
+            <h3>
+                📚 PubMed
+                <span class="status-dot {% if api_status.pubmed %}connected{% else %}disconnected{% endif %}"></span>
+            </h3>
+            <div class="form-group">
+                <label class="form-label">Email Address</label>
+                <input type="email" name="pubmed_email" class="form-input" 
+                       value="{{ settings.pubmed_email }}" placeholder="your@email.com">
+                <p class="help-text">
+                    Required by NCBI for PubMed API access. Used for rate limiting notifications only.
+                </p>
+            </div>
+        </div>
+        
+        <button type="submit" class="btn btn-primary" style="width: 100%;">
+            💾 Save Settings
+        </button>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function togglePassword(btn) {
+        const input = btn.previousElementSibling;
+        if (input.type === 'password') {
+            input.type = 'text';
+            btn.textContent = '🙈';
+        } else {
+            input.type = 'password';
+            btn.textContent = '👁️';
+        }
+    }
+    
+    document.getElementById('settings-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const formData = new FormData(e.target);
+        
+        try {
+            const response = await fetch('/api/settings', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                alert('Settings saved successfully!');
+                window.location.reload();
+            } else {
+                throw new Error(data.detail || 'Failed to save settings');
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    });
+</script>
+{% endblock %}
+

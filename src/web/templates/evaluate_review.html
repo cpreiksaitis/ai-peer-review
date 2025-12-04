@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+
+{% block title %}Evaluate Review Quality{% endblock %}
+
+{% block content %}
+<div class="grid grid-2" style="grid-template-columns: 450px 1fr;">
+    <!-- Input Section -->
+    <div>
+        <div class="card">
+            <h2 class="card-title mb-2">📝 Evaluate Review Quality</h2>
+            <p class="text-muted mb-2">Use LLM-as-judge to assess a peer review's quality</p>
+            
+            <form id="evaluate-form" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label class="form-label">Manuscript PDF</label>
+                    <div class="file-upload" id="file-drop-zone">
+                        <div class="file-upload-icon">📄</div>
+                        <div class="file-upload-text">
+                            <strong>Drop PDF here</strong><br>
+                            or click to browse
+                        </div>
+                        <input type="file" name="manuscript" id="file-input" accept=".pdf" style="display: none;">
+                    </div>
+                    <p id="file-name" class="text-small text-muted mt-1"></p>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Review Text</label>
+                    <textarea name="review_text" id="review-text" class="form-input" rows="12" 
+                              placeholder="Paste the peer review text here..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Judge Model</label>
+                    <select name="judge_model" class="form-input">
+                        <option value="gpt-5-nano">GPT-5 Nano (cost-effective)</option>
+                        <option value="gpt-5-mini">GPT-5 Mini</option>
+                        <option value="claude-haiku-4-5">Claude Haiku</option>
+                    </select>
+                </div>
+                
+                <button type="submit" class="btn btn-primary" style="width: 100%;" id="evaluate-btn">
+                    🧑‍⚖️ Evaluate Review
+                </button>
+            </form>
+        </div>
+        
+        <!-- Criteria info -->
+        <div class="card">
+            <h3 class="card-title mb-2">Evaluation Criteria</h3>
+            <div class="text-small" style="color: var(--text-secondary);">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                    <div>📋 Comprehensiveness</div>
+                    <div>🎯 Specificity</div>
+                    <div>💡 Constructiveness</div>
+                    <div>📚 Literature Integration</div>
+                    <div>⚖️ Balance</div>
+                    <div>✅ Technical Accuracy</div>
+                    <div>📝 Clarity</div>
+                    <div>🎓 Recommendation</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Results -->
+    <div>
+        <div class="flex justify-between items-center mb-2">
+            <h2 style="font-size: 1.5rem;">Evaluation Results</h2>
+            <span id="result-grade" class="text-muted"></span>
+        </div>
+        
+        <div id="results-container">
+            <div class="card">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📝</div>
+                    <h3>Upload manuscript and paste review</h3>
+                    <p class="text-muted">An LLM judge will score the review on 8 quality criteria</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const fileInput = document.getElementById('file-input');
+    const fileDropZone = document.getElementById('file-drop-zone');
+    const fileName = document.getElementById('file-name');
+    const evaluateForm = document.getElementById('evaluate-form');
+    const resultsContainer = document.getElementById('results-container');
+    const resultGrade = document.getElementById('result-grade');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingText = document.getElementById('loading-text');
+    const evaluateBtn = document.getElementById('evaluate-btn');
+    
+    // File drop zone
+    fileDropZone.addEventListener('click', () => fileInput.click());
+    
+    fileDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fileDropZone.classList.add('dragover');
+    });
+    
+    fileDropZone.addEventListener('dragleave', () => {
+        fileDropZone.classList.remove('dragover');
+    });
+    
+    fileDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileDropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            updateFileName();
+        }
+    });
+    
+    fileInput.addEventListener('change', updateFileName);
+    
+    function updateFileName() {
+        if (fileInput.files.length) {
+            fileName.textContent = '📎 ' + fileInput.files[0].name;
+        }
+    }
+    
+    // Form submission
+    evaluateForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (!fileInput.files.length) {
+            alert('Please select a PDF file');
+            return;
+        }
+        
+        const reviewText = document.getElementById('review-text').value;
+        if (!reviewText || reviewText.length < 100) {
+            alert('Please paste a review with at least 100 characters');
+            return;
+        }
+        
+        const formData = new FormData(evaluateForm);
+        
+        evaluateBtn.disabled = true;
+        loadingText.textContent = 'Extracting manuscript...';
+        loadingOverlay.classList.add('active');
+        
+        // Update loading messages
+        const stages = [
+            'Extracting manuscript text...',
+            'Generating manuscript summary...',
+            'Analyzing review structure...',
+            'Scoring evaluation criteria...',
+            'Generating feedback...'
+        ];
+        let stageIndex = 0;
+        const stageInterval = setInterval(() => {
+            stageIndex = (stageIndex + 1) % stages.length;
+            loadingText.textContent = stages[stageIndex];
+        }, 3000);
+        
+        try {
+            const response = await fetch('/api/evaluate/review', {
+                method: 'POST',
+                body: formData
+            });
+            
+            clearInterval(stageInterval);
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Evaluation failed');
+            }
+            
+            const data = await response.json();
+            displayResults(data);
+            
+        } catch (error) {
+            clearInterval(stageInterval);
+            resultsContainer.innerHTML = `
+                <div class="card">
+                    <div class="empty-state" style="padding: 2rem;">
+                        <div class="empty-state-icon">❌</div>
+                        <h3>Evaluation Failed</h3>
+                        <p class="text-muted">${error.message}</p>
+                    </div>
+                </div>
+            `;
+            resultGrade.textContent = '';
+        } finally {
+            loadingOverlay.classList.remove('active');
+            evaluateBtn.disabled = false;
+        }
+    });
+    
+    function displayResults(data) {
+        const eval_data = data.evaluation;
+        const grade = data.grade;
+        
+        // Grade badge
+        const gradeColor = grade.startsWith('A') ? 'var(--accent-green)' : 
+                          grade.startsWith('B') ? 'var(--accent-cyan)' :
+                          grade.startsWith('C') ? 'var(--accent-orange)' : 'var(--accent-red)';
+        resultGrade.innerHTML = `<span style="font-size: 1.5rem; font-weight: bold; color: ${gradeColor};">Grade: ${grade}</span>`;
+        
+        let html = '';
+        
+        // Overall score
+        const score = eval_data.weighted_score;
+        html += `
+            <div class="card" style="background: linear-gradient(135deg, ${gradeColor}15, ${gradeColor}05); border-color: ${gradeColor};">
+                <div class="flex items-center gap-2">
+                    <span style="font-size: 3rem; font-weight: bold; color: ${gradeColor};">${score.toFixed(1)}</span>
+                    <div>
+                        <h3 style="margin: 0;">/10 Overall Score</h3>
+                        <p class="text-muted" style="margin: 0;">Grade: ${grade}</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Criterion scores
+        html += `
+            <div class="card">
+                <h3 class="card-title mb-2">Criterion Scores</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem;">
+        `;
+        
+        const criterionNames = {
+            comprehensiveness: 'Comprehensiveness',
+            constructiveness: 'Constructiveness',
+            specificity: 'Specificity',
+            literature_integration: 'Literature Integration',
+            balance: 'Balance',
+            accuracy: 'Technical Accuracy',
+            clarity: 'Clarity',
+            recommendation_justification: 'Recommendation'
+        };
+        
+        for (const [key, score] of Object.entries(eval_data.scores)) {
+            const reason = eval_data.reasoning[key] || '';
+            const name = criterionNames[key] || key;
+            html += `
+                <div style="padding: 0.75rem; background: var(--bg-tertiary); border-radius: 6px;">
+                    <div class="flex justify-between items-center mb-1">
+                        <strong class="text-small">${name}</strong>
+                        <span class="badge ${score >= 7 ? 'badge-completed' : score >= 5 ? 'badge-minor' : 'badge-pending'}">${score}/10</span>
+                    </div>
+                    <p class="text-small text-muted" style="margin: 0;">${reason}</p>
+                </div>
+            `;
+        }
+        
+        html += `</div></div>`;
+        
+        // Overall assessment
+        if (eval_data.overall_assessment) {
+            html += `
+                <div class="card">
+                    <h3 class="card-title mb-2">Overall Assessment</h3>
+                    <p style="line-height: 1.6;">${eval_data.overall_assessment}</p>
+                </div>
+            `;
+        }
+        
+        // Strengths and improvements
+        html += `<div class="grid grid-2" style="gap: 1rem;">`;
+        
+        if (eval_data.strengths && eval_data.strengths.length > 0) {
+            html += `
+                <div class="card">
+                    <h3 class="card-title mb-2" style="color: var(--accent-green);">✓ Strengths</h3>
+                    <ul class="text-small" style="padding-left: 1.25rem; margin: 0;">
+                        ${eval_data.strengths.map(s => `<li style="margin-bottom: 0.5rem;">${s}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+        
+        if (eval_data.improvements && eval_data.improvements.length > 0) {
+            html += `
+                <div class="card">
+                    <h3 class="card-title mb-2" style="color: var(--accent-orange);">↑ Suggested Improvements</h3>
+                    <ul class="text-small" style="padding-left: 1.25rem; margin: 0;">
+                        ${eval_data.improvements.map(i => `<li style="margin-bottom: 0.5rem;">${i}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+        
+        html += `</div>`;
+        
+        // Exemplary and problematic comments
+        if (eval_data.exemplary_comments && eval_data.exemplary_comments.length > 0) {
+            html += `
+                <div class="card">
+                    <h3 class="card-title mb-2" style="color: var(--accent-cyan);">💎 Exemplary Comments</h3>
+                    ${eval_data.exemplary_comments.map(c => `
+                        <blockquote style="margin: 0.5rem 0; padding: 0.75rem; background: var(--bg-tertiary); border-left: 3px solid var(--accent-cyan); font-style: italic;">
+                            "${c}"
+                        </blockquote>
+                    `).join('')}
+                </div>
+            `;
+        }
+        
+        if (eval_data.problematic_comments && eval_data.problematic_comments.length > 0) {
+            html += `
+                <div class="card">
+                    <h3 class="card-title mb-2" style="color: var(--accent-red);">⚠ Comments Needing Improvement</h3>
+                    ${eval_data.problematic_comments.map(c => `
+                        <blockquote style="margin: 0.5rem 0; padding: 0.75rem; background: var(--bg-tertiary); border-left: 3px solid var(--accent-red); font-style: italic;">
+                            "${c}"
+                        </blockquote>
+                    `).join('')}
+                </div>
+            `;
+        }
+        
+        resultsContainer.innerHTML = html;
+    }
+</script>
+{% endblock %}
+

@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% block title %}Review: {{ review.manuscript_title }}{% endblock %}
+
+{% block head %}
+<style>
+    .review-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 2rem;
+    }
+    
+    .review-meta {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-top: 0.5rem;
+    }
+    
+    .review-meta-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+    }
+    
+    .review-content {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: 2rem;
+        line-height: 1.8;
+    }
+    
+    .review-content h1, .review-content h2, .review-content h3 {
+        margin-top: 1.5rem;
+        margin-bottom: 0.75rem;
+        color: var(--text-primary);
+    }
+    
+    .review-content h1 { font-size: 1.5rem; }
+    .review-content h2 { font-size: 1.25rem; }
+    .review-content h3 { font-size: 1.1rem; }
+    
+    .review-content p {
+        margin-bottom: 1rem;
+        color: var(--text-secondary);
+    }
+    
+    .review-content ul, .review-content ol {
+        margin-bottom: 1rem;
+        padding-left: 1.5rem;
+        color: var(--text-secondary);
+    }
+    
+    .review-content li {
+        margin-bottom: 0.5rem;
+    }
+    
+    .review-content strong {
+        color: var(--text-primary);
+    }
+    
+    .review-content blockquote {
+        border-left: 3px solid var(--accent-primary);
+        padding-left: 1rem;
+        margin: 1rem 0;
+        color: var(--text-muted);
+        font-style: italic;
+    }
+    
+    .tabs {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        padding-bottom: 0.5rem;
+    }
+    
+    .tab {
+        padding: 0.5rem 1rem;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        color: var(--text-muted);
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+    
+    .tab:hover {
+        color: var(--text-primary);
+    }
+    
+    .tab.active {
+        background: var(--accent-primary);
+        color: white;
+    }
+    
+    .tab-content {
+        display: none;
+    }
+    
+    .tab-content.active {
+        display: block;
+    }
+    
+    .agent-review {
+        background: var(--bg-tertiary);
+        border-radius: var(--radius-md);
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .agent-name {
+        font-weight: 600;
+        color: var(--accent-primary);
+        margin-bottom: 0.75rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="review-header">
+    <div>
+        <h1>{{ review.manuscript_title or review.manuscript_filename }}</h1>
+        <div class="review-meta">
+            <div class="review-meta-item">
+                📅 {{ review.created_at[:10] if review.created_at else '' }}
+            </div>
+            {% if review.total_cost_usd %}
+            <div class="review-meta-item">
+                💰 ${{ "%.4f"|format(review.total_cost_usd) }}
+            </div>
+            <div class="review-meta-item">
+                🔢 {{ "{:,}"|format(review.total_tokens) }} tokens
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    <div style="display: flex; gap: 0.75rem; align-items: center;">
+        {% if review.recommendation %}
+        <span class="badge 
+            {% if review.recommendation == 'Accept' %}badge-success
+            {% elif review.recommendation == 'Reject' %}badge-danger
+            {% elif 'Revision' in review.recommendation %}badge-warning
+            {% else %}badge-muted{% endif %}"
+            style="font-size: 0.9rem; padding: 0.5rem 1rem;">
+            {{ review.recommendation }}
+        </span>
+        {% endif %}
+        <a href="/" class="btn btn-secondary btn-sm">← Back</a>
+    </div>
+</div>
+
+<div class="tabs">
+    <div class="tab active" data-tab="final">Final Review</div>
+    <div class="tab" data-tab="agents">Agent Reviews</div>
+    {% if review.debate_rounds %}
+    <div class="tab" data-tab="debate">Debate</div>
+    {% endif %}
+    {% if review.literature_context %}
+    <div class="tab" data-tab="literature">Literature</div>
+    {% endif %}
+</div>
+
+<div id="tab-final" class="tab-content active">
+    <div class="review-content" id="final-review-content">
+        {{ review.final_review | replace('\n', '<br>') | safe }}
+    </div>
+</div>
+
+<div id="tab-agents" class="tab-content">
+    {% for agent_name, agent_review in review.initial_reviews.items() %}
+    <div class="agent-review">
+        <div class="agent-name">{{ agent_name }}</div>
+        <div style="color: var(--text-secondary); white-space: pre-wrap;">{{ agent_review }}</div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if review.debate_rounds %}
+<div id="tab-debate" class="tab-content">
+    {% for round_num, round_data in review.debate_rounds | enumerate(start=1) %}
+    <h3 style="margin-bottom: 1rem;">Round {{ round_num }}</h3>
+    {% for agent_name, response in round_data.items() %}
+    <div class="agent-review">
+        <div class="agent-name">{{ agent_name }}</div>
+        <div style="color: var(--text-secondary); white-space: pre-wrap;">{{ response }}</div>
+    </div>
+    {% endfor %}
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if review.literature_context %}
+<div id="tab-literature" class="tab-content">
+    <div class="review-content" style="white-space: pre-wrap;">{{ review.literature_context }}</div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            tab.classList.add('active');
+            document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+        });
+    });
+    
+    // Simple markdown-like formatting
+    const content = document.getElementById('final-review-content');
+    if (content) {
+        let html = content.innerHTML;
+        // Bold
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        // Headers
+        html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+        html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+        html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+        content.innerHTML = html;
+    }
+</script>
+{% endblock %}
+

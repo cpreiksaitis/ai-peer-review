@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block title %}Compare Literature Providers{% endblock %}
+
+{% block content %}
+<div class="grid grid-2" style="grid-template-columns: 400px 1fr;">
+    <!-- Upload Section -->
+    <div>
+        <div class="card">
+            <h2 class="card-title mb-2">📊 Compare Literature Providers</h2>
+            <p class="text-muted mb-2">Test all search providers and evaluate which finds the best papers</p>
+            
+            <form id="compare-form" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label class="form-label">Manuscript PDF</label>
+                    <div class="file-upload" id="file-drop-zone">
+                        <div class="file-upload-icon">📄</div>
+                        <div class="file-upload-text">
+                            <strong>Drop PDF here</strong><br>
+                            or click to browse
+                        </div>
+                        <input type="file" name="file" id="file-input" accept=".pdf" style="display: none;">
+                    </div>
+                    <p id="file-name" class="text-small text-muted mt-1"></p>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Max Papers Per Provider</label>
+                    <input type="number" name="max_results" class="form-input" value="10" min="5" max="20">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Judge Model</label>
+                    <select name="judge_model" class="form-input">
+                        <option value="gpt-5-nano">GPT-5 Nano (cost-effective)</option>
+                        <option value="gpt-5-mini">GPT-5 Mini</option>
+                        <option value="claude-haiku-4-5">Claude Haiku</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Providers to Test</label>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        {% for p in providers %}
+                        <label class="flex items-center gap-1">
+                            <input type="checkbox" name="provider_{{ p.name }}" 
+                                   value="{{ p.name }}" 
+                                   {% if p.available %}checked{% else %}disabled{% endif %}>
+                            <span class="text-small">{{ p.display_name }}{% if not p.available %} (not configured){% endif %}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-primary" style="width: 100%;" id="compare-btn">
+                    🔬 Run Comparison
+                </button>
+            </form>
+        </div>
+        
+        <!-- How it works -->
+        <div class="card">
+            <h3 class="card-title mb-2">How it works</h3>
+            <ol class="text-small" style="padding-left: 1.25rem; color: var(--text-secondary);">
+                <li style="margin-bottom: 0.5rem;">📝 Extract text from your PDF</li>
+                <li style="margin-bottom: 0.5rem;">🔍 Run each provider's search</li>
+                <li style="margin-bottom: 0.5rem;">🧑‍⚖️ LLM-as-judge evaluates results</li>
+                <li style="margin-bottom: 0.5rem;">📊 Score on 7 criteria</li>
+                <li>🏆 Rank providers by quality</li>
+            </ol>
+        </div>
+    </div>
+    
+    <!-- Results -->
+    <div>
+        <div class="flex justify-between items-center mb-2">
+            <h2 style="font-size: 1.5rem;">Comparison Results</h2>
+            <span id="result-status" class="text-muted"></span>
+        </div>
+        
+        <div id="results-container">
+            <div class="card">
+                <div class="empty-state">
+                    <div class="empty-state-icon">🔬</div>
+                    <h3>Upload a manuscript to compare providers</h3>
+                    <p class="text-muted">Each provider will search for related papers, and an LLM judge will score the quality</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const fileInput = document.getElementById('file-input');
+    const fileDropZone = document.getElementById('file-drop-zone');
+    const fileName = document.getElementById('file-name');
+    const compareForm = document.getElementById('compare-form');
+    const resultsContainer = document.getElementById('results-container');
+    const resultStatus = document.getElementById('result-status');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingText = document.getElementById('loading-text');
+    const compareBtn = document.getElementById('compare-btn');
+    
+    // File drop zone
+    fileDropZone.addEventListener('click', () => fileInput.click());
+    
+    fileDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fileDropZone.classList.add('dragover');
+    });
+    
+    fileDropZone.addEventListener('dragleave', () => {
+        fileDropZone.classList.remove('dragover');
+    });
+    
+    fileDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileDropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            updateFileName();
+        }
+    });
+    
+    fileInput.addEventListener('change', updateFileName);
+    
+    function updateFileName() {
+        if (fileInput.files.length) {
+            fileName.textContent = '📎 ' + fileInput.files[0].name;
+        }
+    }
+    
+    // Form submission
+    compareForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (!fileInput.files.length) {
+            alert('Please select a PDF file');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('max_results', compareForm.max_results.value);
+        formData.append('judge_model', compareForm.judge_model.value);
+        
+        // Collect selected providers
+        const providers = [];
+        document.querySelectorAll('input[name^="provider_"]:checked').forEach(cb => {
+            providers.push(cb.value);
+        });
+        formData.append('providers', providers.join(','));
+        
+        compareBtn.disabled = true;
+        loadingText.textContent = 'Initializing comparison...';
+        loadingOverlay.classList.add('active');
+        
+        // Update loading messages
+        const stages = [
+            'Extracting manuscript text...',
+            'Generating manuscript summary...',
+            'Searching with PubMed Direct...',
+            'Searching with OpenAI Web Search...',
+            'Searching with Gemini...',
+            'Searching with Perplexity...',
+            'Running LLM-as-judge evaluation...',
+            'Calculating rankings...'
+        ];
+        let stageIndex = 0;
+        const stageInterval = setInterval(() => {
+            stageIndex = (stageIndex + 1) % stages.length;
+            loadingText.textContent = stages[stageIndex];
+        }, 5000);
+        
+        try {
+            const response = await fetch('/api/evaluate/literature', {
+                method: 'POST',
+                body: formData
+            });
+            
+            clearInterval(stageInterval);
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Comparison failed');
+            }
+            
+            const data = await response.json();
+            displayResults(data);
+            
+        } catch (error) {
+            clearInterval(stageInterval);
+            resultsContainer.innerHTML = `
+                <div class="card">
+                    <div class="empty-state" style="padding: 2rem;">
+                        <div class="empty-state-icon">❌</div>
+                        <h3>Comparison Failed</h3>
+                        <p class="text-muted">${error.message}</p>
+                    </div>
+                </div>
+            `;
+            resultStatus.textContent = '';
+        } finally {
+            loadingOverlay.classList.remove('active');
+            compareBtn.disabled = false;
+        }
+    });
+    
+    function displayResults(data) {
+        resultStatus.textContent = `Compared ${data.rankings.length} providers`;
+        
+        // Winner banner
+        let html = '';
+        if (data.rankings.length > 0) {
+            const winner = data.rankings[0];
+            html += `
+                <div class="card" style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05)); border-color: var(--accent-green);">
+                    <div class="flex items-center gap-2">
+                        <span style="font-size: 2rem;">🏆</span>
+                        <div>
+                            <h3 style="color: var(--accent-green); margin: 0;">Winner: ${winner[0]}</h3>
+                            <p class="text-muted" style="margin: 0;">Score: ${winner[1].toFixed(1)}/10</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Rankings table
+        html += `
+            <div class="card">
+                <h3 class="card-title mb-2">Rankings</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--border-color);">
+                            <th style="text-align: left; padding: 0.5rem;">Rank</th>
+                            <th style="text-align: left; padding: 0.5rem;">Provider</th>
+                            <th style="text-align: center; padding: 0.5rem;">Papers</th>
+                            <th style="text-align: center; padding: 0.5rem;">Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        data.rankings.forEach((rank, i) => {
+            const eval_data = data.evaluations[rank[0]];
+            const papers = eval_data ? eval_data.papers_count : 0;
+            const scoreClass = rank[1] >= 7 ? 'badge-completed' : rank[1] >= 5 ? 'badge-minor' : 'badge-pending';
+            html += `
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 0.5rem; font-weight: bold;">${i + 1}</td>
+                    <td style="padding: 0.5rem;">${rank[0]}</td>
+                    <td style="text-align: center; padding: 0.5rem;">${papers}</td>
+                    <td style="text-align: center; padding: 0.5rem;">
+                        <span class="badge ${scoreClass}">${rank[1].toFixed(1)}</span>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        // Detailed evaluations
+        data.rankings.forEach((rank) => {
+            const eval_data = data.evaluations[rank[0]];
+            if (!eval_data) return;
+            
+            html += `
+                <div class="card">
+                    <h3 class="card-title mb-2">${rank[0]} - Detailed Scores</h3>
+            `;
+            
+            if (eval_data.error) {
+                html += `<p class="text-muted">Error: ${eval_data.error}</p>`;
+            } else {
+                html += `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem;">`;
+                
+                for (const [key, score] of Object.entries(eval_data.scores)) {
+                    const reason = eval_data.reasoning[key] || '';
+                    html += `
+                        <div style="padding: 0.75rem; background: var(--bg-tertiary); border-radius: 6px;">
+                            <div class="flex justify-between items-center mb-1">
+                                <strong class="text-small">${key.replace(/_/g, ' ')}</strong>
+                                <span class="badge ${score >= 7 ? 'badge-completed' : score >= 5 ? 'badge-minor' : 'badge-pending'}">${score}/10</span>
+                            </div>
+                            <p class="text-small text-muted" style="margin: 0;">${reason}</p>
+                        </div>
+                    `;
+                }
+                
+                html += `</div>`;
+                
+                if (eval_data.overall_assessment) {
+                    html += `
+                        <div style="margin-top: 1rem; padding: 0.75rem; background: var(--bg-tertiary); border-radius: 6px;">
+                            <strong class="text-small">Overall Assessment</strong>
+                            <p class="text-small" style="margin: 0.5rem 0 0 0;">${eval_data.overall_assessment}</p>
+                        </div>
+                    `;
+                }
+                
+                if (eval_data.missing_elements && eval_data.missing_elements.length > 0) {
+                    html += `
+                        <div style="margin-top: 0.75rem;">
+                            <strong class="text-small" style="color: var(--accent-orange);">Missing Elements:</strong>
+                            <ul class="text-small text-muted" style="margin: 0.25rem 0 0 1rem; padding: 0;">
+                                ${eval_data.missing_elements.map(e => `<li>${e}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+            }
+            
+            html += `</div>`;
+        });
+        
+        // Manuscript summary
+        if (data.manuscript_summary) {
+            html += `
+                <div class="card">
+                    <h3 class="card-title mb-2">Manuscript Summary</h3>
+                    <p class="text-small text-muted">${data.manuscript_summary}</p>
+                </div>
+            `;
+        }
+        
+        resultsContainer.innerHTML = html;
+    }
+</script>
+{% endblock %}
+

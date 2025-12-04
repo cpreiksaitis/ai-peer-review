@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% block title %}Review: {{ review.manuscript_title or review.manuscript_filename }}{% endblock %}
+
+{% block content %}
+<div class="mb-2">
+    <a href="/" class="btn btn-secondary btn-sm">← Back to Reviews</a>
+</div>
+
+<div class="card mb-2">
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 style="font-size: 1.75rem; font-weight: 700;">{{ review.manuscript_title or review.manuscript_filename }}</h1>
+            <p class="text-muted mt-1">Reviewed on {{ review.created_at[:10] if review.created_at else 'Unknown date' }}</p>
+        </div>
+        <div class="flex gap-1 items-center">
+            {% if review.recommendation %}
+                <span class="badge badge-{% if review.recommendation == 'Accept' %}accept{% elif review.recommendation == 'Minor Revision' %}minor{% elif review.recommendation == 'Major Revision' %}major{% else %}reject{% endif %}" style="font-size: 1rem; padding: 0.5rem 1rem;">
+                    {{ review.recommendation }}
+                </span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="grid grid-3 mb-2">
+    <div class="card">
+        <div class="stat">
+            <div class="stat-value">${{ "%.4f"|format(review.total_cost_usd or 0) }}</div>
+            <div class="stat-label">Total Cost</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="stat">
+            <div class="stat-value">{{ "{:,}".format(review.total_tokens or 0) }}</div>
+            <div class="stat-label">Tokens Used</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="stat">
+            <div class="stat-value">{{ (review.cost_breakdown.num_calls or 0) if review.cost_breakdown else 0 }}</div>
+            <div class="stat-label">API Calls</div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+    <a href="#final" class="tab active" onclick="showTab(event, 'final')">Final Review</a>
+    <a href="#literature" class="tab" onclick="showTab(event, 'literature')">Literature</a>
+    <a href="#initial" class="tab" onclick="showTab(event, 'initial')">Initial Reviews</a>
+    <a href="#debate" class="tab" onclick="showTab(event, 'debate')">Debate</a>
+    <a href="#costs" class="tab" onclick="showTab(event, 'costs')">Cost Breakdown</a>
+</div>
+
+<!-- Final Review Tab -->
+<div id="tab-final" class="tab-content">
+    <div class="card">
+        <div class="review-content" id="final-review-content">
+            {{ review.final_review | replace('\n', '<br>') | safe }}
+        </div>
+    </div>
+</div>
+
+<!-- Literature Tab -->
+<div id="tab-literature" class="tab-content" style="display: none;">
+    <div class="card">
+        <h3 class="card-title flex items-center gap-1 mb-2">
+            📚 Related Literature from PubMed
+        </h3>
+        {% if review.literature_context %}
+            <div class="review-content" id="literature-content">
+                {{ review.literature_context | replace('\n', '<br>') | safe }}
+            </div>
+        {% else %}
+            <div class="empty-state" style="padding: 2rem;">
+                <div class="empty-state-icon">📚</div>
+                <h4>No Literature Search Performed</h4>
+                <p class="text-muted">Literature grounding was not enabled for this review.<br>
+                Set PUBMED_EMAIL environment variable to enable PubMed search.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Initial Reviews Tab -->
+<div id="tab-initial" class="tab-content" style="display: none;">
+    {% if review.initial_reviews %}
+        {% for agent_name, agent_review in review.initial_reviews.items() %}
+        <div class="card">
+            <h3 class="card-title flex items-center gap-1">
+                {% if 'Methodologist' in agent_name %}🔬{% elif 'Domain' in agent_name %}🏥{% elif 'Communication' in agent_name %}✍️{% elif 'Ethics' in agent_name %}⚖️{% else %}👤{% endif %}
+                {{ agent_name }}
+            </h3>
+            <div class="review-content mt-2">
+                {{ agent_review | replace('\n', '<br>') | safe }}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="card">
+            <p class="text-muted">No initial reviews available.</p>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Debate Tab -->
+<div id="tab-debate" class="tab-content" style="display: none;">
+    {% if review.debate_rounds %}
+        {% for round in review.debate_rounds %}
+        <div class="card">
+            <h3 class="card-title">Round {{ loop.index }}</h3>
+            {% for agent_name, response in round.items() %}
+            <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                <h4 class="flex items-center gap-1" style="color: var(--accent-cyan);">
+                    {% if 'Methodologist' in agent_name %}🔬{% elif 'Domain' in agent_name %}🏥{% elif 'Communication' in agent_name %}✍️{% elif 'Ethics' in agent_name %}⚖️{% else %}👤{% endif %}
+                    {{ agent_name }}
+                </h4>
+                <div class="review-content mt-1">
+                    {{ response | replace('\n', '<br>') | safe }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+        
+        {% if review.final_positions %}
+        <div class="card">
+            <h3 class="card-title">Final Positions</h3>
+            {% for agent_name, position in review.final_positions.items() %}
+            <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                <h4 class="flex items-center gap-1" style="color: var(--accent-emerald);">
+                    {% if 'Methodologist' in agent_name %}🔬{% elif 'Domain' in agent_name %}🏥{% elif 'Communication' in agent_name %}✍️{% elif 'Ethics' in agent_name %}⚖️{% else %}👤{% endif %}
+                    {{ agent_name }}
+                </h4>
+                <div class="review-content mt-1">
+                    {{ position | replace('\n', '<br>') | safe }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    {% else %}
+        <div class="card">
+            <p class="text-muted">No debate data available.</p>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Cost Breakdown Tab -->
+<div id="tab-costs" class="tab-content" style="display: none;">
+    <div class="card">
+        <h3 class="card-title mb-2">Cost by Agent</h3>
+        {% if review.cost_breakdown and review.cost_breakdown.by_agent %}
+            <div class="grid" style="gap: 0.75rem;">
+                {% for agent, cost in review.cost_breakdown.by_agent.items() %}
+                <div class="flex justify-between items-center" style="padding: 0.75rem; background: var(--bg-tertiary); border-radius: 8px;">
+                    <span>{{ agent }}</span>
+                    <span class="cost-display">${{ "%.4f"|format(cost) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-muted">No agent cost data available.</p>
+        {% endif %}
+    </div>
+    
+    <div class="card">
+        <h3 class="card-title mb-2">Cost by Operation</h3>
+        {% if review.cost_breakdown and review.cost_breakdown.by_operation %}
+            <div class="grid" style="gap: 0.75rem;">
+                {% for operation, cost in review.cost_breakdown.by_operation.items() %}
+                <div class="flex justify-between items-center" style="padding: 0.75rem; background: var(--bg-tertiary); border-radius: 8px;">
+                    <span>{{ operation | replace('_', ' ') | title }}</span>
+                    <span class="cost-display">${{ "%.4f"|format(cost) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-muted">No operation cost data available.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function showTab(event, tabName) {
+        event.preventDefault();
+        
+        // Hide all tabs
+        document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.style.display = 'none';
+        });
+        
+        // Remove active class from all tab buttons
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        
+        // Show selected tab
+        document.getElementById('tab-' + tabName).style.display = 'block';
+        event.target.classList.add('active');
+    }
+    
+    // Format the final review content with proper markdown-like styling
+    document.addEventListener('DOMContentLoaded', function() {
+        const content = document.getElementById('final-review-content');
+        if (content) {
+            let html = content.innerHTML;
+            
+            // Convert ## headers
+            html = html.replace(/##\s+([^\n<]+)/g, '<h2>$1</h2>');
+            
+            // Convert ### headers
+            html = html.replace(/###\s+([^\n<]+)/g, '<h3>$1</h3>');
+            
+            // Convert **bold**
+            html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            
+            // Convert numbered lists
+            html = html.replace(/(\d+)\.\s+([^\n<]+)/g, '<li>$2</li>');
+            
+            content.innerHTML = html;
+        }
+    });
+</script>
+{% endblock %}
+

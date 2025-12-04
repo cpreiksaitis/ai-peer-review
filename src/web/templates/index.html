@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+
+{% block title %}Multi-Agent Peer Review{% endblock %}
+
+{% block content %}
+<div class="grid grid-2" style="grid-template-columns: 1fr 2fr;">
+    <!-- Upload Section -->
+    <div>
+        <div class="card">
+            <h2 class="card-title mb-2">Submit Manuscript</h2>
+            
+            <form id="upload-form" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label class="form-label">Manuscript Title (optional)</label>
+                    <input type="text" name="title" class="form-input" placeholder="Enter title or leave blank to extract from PDF">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">PDF File</label>
+                    <div class="file-upload" id="file-drop-zone">
+                        <div class="file-upload-icon">📄</div>
+                        <div class="file-upload-text">
+                            <strong>Drop your PDF here</strong><br>
+                            or click to browse
+                        </div>
+                        <input type="file" name="file" id="file-input" accept=".pdf" style="display: none;">
+                    </div>
+                    <p id="file-name" class="text-small text-muted mt-1"></p>
+                </div>
+                
+                <div class="form-group">
+                    <label class="toggle-container">
+                        <input type="checkbox" name="search_literature" id="search-literature" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">📚 Include Literature Search</span>
+                    </label>
+                    <p class="text-small text-muted mt-1">Search PubMed for related papers to inform the review</p>
+                </div>
+                
+                <div class="form-group">
+                    <label class="toggle-container">
+                        <input type="checkbox" name="use_pdf_vision" id="use-pdf-vision" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">👁️ PDF Vision (Beta)</span>
+                    </label>
+                    <p class="text-small text-muted mt-1">Send PDF directly to models for better figure/table analysis</p>
+                </div>
+                
+                <div class="form-group">
+                    <label class="toggle-container">
+                        <input type="checkbox" name="show_live_output" id="show-live-output">
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">📺 Live Output</span>
+                    </label>
+                    <p class="text-small text-muted mt-1">Show real-time model responses during review</p>
+                </div>
+                
+                <button type="submit" class="btn btn-primary" style="width: 100%;">
+                    🚀 Start Review
+                </button>
+            </form>
+        </div>
+        
+        <!-- Agent Info -->
+        <div class="card">
+            <h3 class="card-title mb-2">Review Team</h3>
+            <div class="grid" style="gap: 0.75rem;">
+                <div class="agent-card">
+                    <div class="agent-avatar" style="background: rgba(139, 92, 246, 0.2);">🎯</div>
+                    <div class="agent-info">
+                        <h4>Orchestrator</h4>
+                        <p style="font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem;">{{ config.models.orchestrator if config.models else 'claude-haiku-4-5-20251001' }}</p>
+                    </div>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-avatar methodologist">🔬</div>
+                    <div class="agent-info">
+                        <h4>Methodologist</h4>
+                        <p style="font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem;">{{ config.models.methodologist if config.models else 'gpt-5-nano-2025-08-07' }}</p>
+                    </div>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-avatar domain">🏥</div>
+                    <div class="agent-info">
+                        <h4>Domain Expert</h4>
+                        <p style="font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem;">{{ config.models.domain_expert if config.models else 'gemini-flash-lite-latest' }}</p>
+                    </div>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-avatar communication">✍️</div>
+                    <div class="agent-info">
+                        <h4>Communication</h4>
+                        <p style="font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem;">{{ config.models.communication if config.models else 'gemini-flash-lite-latest' }}</p>
+                    </div>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-avatar ethics">⚖️</div>
+                    <div class="agent-info">
+                        <h4>Ethics Reviewer</h4>
+                        <p style="font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem;">{{ config.models.ethics if config.models else 'gpt-5-nano-2025-08-07' }}</p>
+                    </div>
+                </div>
+            </div>
+            <p class="text-small text-muted mt-2">Configure models in config.yaml</p>
+        </div>
+        
+        <!-- API Status -->
+        <div class="card">
+            <h3 class="card-title mb-2">API Status</h3>
+            <div class="grid" style="gap: 0.5rem;">
+                <div class="flex justify-between items-center">
+                    <span>OpenAI</span>
+                    <span class="badge {% if api_keys.openai %}badge-completed{% else %}badge-failed{% endif %}">
+                        {% if api_keys.openai %}Connected{% else %}Missing{% endif %}
+                    </span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span>Anthropic</span>
+                    <span class="badge {% if api_keys.anthropic %}badge-completed{% else %}badge-failed{% endif %}">
+                        {% if api_keys.anthropic %}Connected{% else %}Missing{% endif %}
+                    </span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span>Gemini</span>
+                    <span class="badge {% if api_keys.gemini %}badge-completed{% else %}badge-failed{% endif %}">
+                        {% if api_keys.gemini %}Connected{% else %}Missing{% endif %}
+                    </span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span>PubMed</span>
+                    <span class="badge {% if api_keys.pubmed %}badge-completed{% else %}badge-pending{% endif %}">
+                        {% if api_keys.pubmed %}Connected{% else %}Optional{% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Reviews List -->
+    <div>
+        <div class="flex justify-between items-center mb-2">
+            <h2 style="font-size: 1.5rem;">Recent Reviews</h2>
+            <span class="text-muted">{{ reviews|length }} total</span>
+        </div>
+        
+        {% if reviews %}
+            {% for review in reviews %}
+            <div class="card" id="review-card-{{ review.id }}">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">{{ review.manuscript_title or review.manuscript_filename }}</h3>
+                        <p class="card-subtitle">{{ review.created_at[:10] if review.created_at else 'Unknown date' }}</p>
+                    </div>
+                    <div class="flex gap-1">
+                        {% if review.recommendation %}
+                            <span class="badge badge-{% if review.recommendation == 'Accept' %}accept{% elif review.recommendation == 'Minor Revision' %}minor{% elif review.recommendation == 'Major Revision' %}major{% else %}reject{% endif %}">
+                                {{ review.recommendation }}
+                            </span>
+                        {% endif %}
+                        <span class="badge badge-{{ review.status.split(':')[0] if ':' in review.status else review.status }}">
+                            {% if review.status == 'processing' %}
+                                <span class="spinner" style="width: 12px; height: 12px; border-width: 1.5px;"></span>
+                            {% endif %}
+                            {{ review.status.split(':')[0] if ':' in review.status else review.status }}
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="flex justify-between items-center">
+                    <div class="flex gap-2">
+                        {% if review.total_cost_usd %}
+                            <span class="cost-display">${{ "%.4f"|format(review.total_cost_usd) }}</span>
+                        {% endif %}
+                        {% if review.total_tokens %}
+                            <span class="text-small text-muted">{{ "{:,}".format(review.total_tokens) }} tokens</span>
+                        {% endif %}
+                    </div>
+                    <div class="flex gap-1">
+                        {% if review.status == 'completed' %}
+                            <a href="/review/{{ review.id }}" class="btn btn-primary btn-sm">View Review</a>
+                        {% endif %}
+                        <button onclick="deleteReview({{ review.id }})" class="btn btn-secondary btn-sm">Delete</button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="card">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📋</div>
+                    <h3>No reviews yet</h3>
+                    <p class="text-muted">Upload a manuscript to get started</p>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const fileInput = document.getElementById('file-input');
+    const fileDropZone = document.getElementById('file-drop-zone');
+    const fileName = document.getElementById('file-name');
+    const uploadForm = document.getElementById('upload-form');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingText = document.getElementById('loading-text');
+    
+    // File drop zone
+    fileDropZone.addEventListener('click', () => fileInput.click());
+    
+    fileDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fileDropZone.classList.add('dragover');
+    });
+    
+    fileDropZone.addEventListener('dragleave', () => {
+        fileDropZone.classList.remove('dragover');
+    });
+    
+    fileDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileDropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            updateFileName();
+        }
+    });
+    
+    fileInput.addEventListener('change', updateFileName);
+    
+    function updateFileName() {
+        if (fileInput.files.length) {
+            fileName.textContent = fileInput.files[0].name;
+        }
+    }
+    
+    // Form submission
+    uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (!fileInput.files.length) {
+            alert('Please select a PDF file');
+            return;
+        }
+        
+        const formData = new FormData(uploadForm);
+        const showLiveOutput = document.getElementById('show-live-output').checked;
+        
+        loadingText.textContent = 'Uploading manuscript...';
+        loadingOverlay.classList.add('active');
+        
+        // Show/hide live output panel based on toggle
+        const liveOutputContainer = document.getElementById('live-output-container');
+        if (showLiveOutput) {
+            liveOutputContainer.classList.add('active');
+        }
+        
+        try {
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                loadingText.textContent = 'Review started! This may take several minutes...';
+                // Poll for status and optionally live output
+                pollReviewStatus(data.review_id, showLiveOutput);
+            } else {
+                throw new Error(data.detail || 'Upload failed');
+            }
+        } catch (error) {
+            loadingOverlay.classList.remove('active');
+            liveOutputContainer.classList.remove('active');
+            alert('Error: ' + error.message);
+        }
+    });
+    
+    let liveOutputIndex = 0;  // Track how many entries we've seen
+    
+    async function pollReviewStatus(reviewId, showLiveOutput = false) {
+        try {
+            const response = await fetch(`/api/review/${reviewId}/status`);
+            const data = await response.json();
+            
+            // Also poll live output if enabled
+            if (showLiveOutput) {
+                pollLiveOutput(reviewId);
+            }
+            
+            if (data.status === 'completed') {
+                loadingOverlay.classList.remove('active');
+                document.getElementById('live-output-container').classList.remove('active');
+                window.location.href = `/review/${reviewId}`;
+            } else if (data.status.startsWith('failed')) {
+                loadingOverlay.classList.remove('active');
+                document.getElementById('live-output-container').classList.remove('active');
+                alert('Review failed: ' + data.status);
+                window.location.reload();
+            } else {
+                // Parse and display status nicely
+                let displayStatus = data.status;
+                if (displayStatus.startsWith('Step ')) {
+                    // Format: "Step 2/5: Methodologist reviewing (1/4)..."
+                    displayStatus = displayStatus.replace('Step ', '📋 Step ');
+                } else if (displayStatus === 'processing') {
+                    displayStatus = '🔄 Starting review process...';
+                } else if (displayStatus.includes('initializing')) {
+                    displayStatus = '🚀 Initializing review...';
+                }
+                loadingText.textContent = displayStatus;
+                // Poll more frequently for better UX
+                setTimeout(() => pollReviewStatus(reviewId, showLiveOutput), 1500);
+            }
+        } catch (error) {
+            console.error('Polling error:', error);
+            setTimeout(() => pollReviewStatus(reviewId, showLiveOutput), 3000);
+        }
+    }
+    
+    async function pollLiveOutput(reviewId) {
+        try {
+            const response = await fetch(`/api/review/${reviewId}/live-output?since=${liveOutputIndex}`);
+            const data = await response.json();
+            
+            if (data.entries && data.entries.length > 0) {
+                const panel = document.getElementById('live-output-panel');
+                const countEl = document.getElementById('live-output-count');
+                
+                data.entries.forEach(entry => {
+                    const entryEl = document.createElement('div');
+                    entryEl.className = 'live-output-entry';
+                    
+                    // Determine agent class for styling
+                    let agentClass = '';
+                    const agentLower = entry.agent.toLowerCase();
+                    if (agentLower.includes('orchestrator')) agentClass = 'orchestrator';
+                    else if (agentLower.includes('methodologist')) agentClass = 'methodologist';
+                    else if (agentLower.includes('domain')) agentClass = 'domain';
+                    else if (agentLower.includes('communication')) agentClass = 'communication';
+                    else if (agentLower.includes('ethics')) agentClass = 'ethics';
+                    
+                    // Format the output type nicely
+                    let typeLabel = entry.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    
+                    entryEl.innerHTML = `
+                        <div class="live-output-agent ${agentClass}">${entry.agent} - ${typeLabel}</div>
+                        <div class="live-output-text">${escapeHtml(entry.content)}</div>
+                    `;
+                    
+                    panel.appendChild(entryEl);
+                    panel.scrollTop = panel.scrollHeight;  // Auto-scroll to bottom
+                });
+                
+                liveOutputIndex = data.total;
+                countEl.textContent = `${data.total} messages`;
+            }
+        } catch (error) {
+            console.error('Live output error:', error);
+        }
+    }
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    async function deleteReview(reviewId) {
+        if (!confirm('Are you sure you want to delete this review?')) return;
+        
+        try {
+            const response = await fetch(`/api/review/${reviewId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                document.getElementById(`review-card-${reviewId}`).remove();
+            } else {
+                throw new Error('Delete failed');
+            }
+        } catch (error) {
+            alert('Error deleting review: ' + error.message);
+        }
+    }
+    
+    // Poll for processing reviews on page load
+    document.querySelectorAll('.badge-processing').forEach(badge => {
+        const card = badge.closest('.card');
+        const reviewId = card.id.replace('review-card-', '');
+        pollReviewStatus(reviewId);
+    });
+</script>
+{% endblock %}
+

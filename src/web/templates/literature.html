@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+
+{% block title %}Literature Search Test{% endblock %}
+
+{% block content %}
+<div class="grid grid-2" style="grid-template-columns: 1fr 2fr;">
+    <!-- Search Form -->
+    <div>
+        <div class="card">
+            <h2 class="card-title mb-2">📚 Literature Search</h2>
+            <p class="text-muted mb-2">Test PubMed search and relevance scoring</p>
+            
+            <form id="search-form">
+                <div class="form-group">
+                    <label class="form-label">Search Query</label>
+                    <input type="text" name="query" class="form-input" 
+                           placeholder="e.g., LLM clinical decision support emergency medicine"
+                           required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Manuscript Context (optional)</label>
+                    <textarea name="manuscript_context" class="form-input" rows="4"
+                              placeholder="Paste manuscript abstract or key text for better relevance scoring..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Max Results</label>
+                    <input type="number" name="max_results" class="form-input" value="10" min="1" max="50">
+                </div>
+                
+                <div class="form-group">
+                    <label class="flex items-center gap-1">
+                        <input type="checkbox" name="score_relevance" checked style="width: auto;">
+                        <span>Score relevance with AI</span>
+                    </label>
+                </div>
+                
+                <button type="submit" class="btn btn-primary" style="width: 100%;">
+                    🔍 Search PubMed
+                </button>
+            </form>
+        </div>
+        
+        <!-- API Status -->
+        <div class="card">
+            <h3 class="card-title mb-2">API Status</h3>
+            <div class="flex justify-between items-center">
+                <span>PubMed</span>
+                <span class="badge {% if api_keys.pubmed %}badge-completed{% else %}badge-failed{% endif %}">
+                    {% if api_keys.pubmed %}Connected{% else %}Missing PUBMED_EMAIL{% endif %}
+                </span>
+            </div>
+        </div>
+        
+        <!-- Help -->
+        <div class="card">
+            <h3 class="card-title mb-2">Search Tips</h3>
+            <ul class="text-small text-muted" style="padding-left: 1.25rem;">
+                <li>Use specific terms (e.g., "GPT-4" not just "AI")</li>
+                <li>Include clinical setting (e.g., "emergency department")</li>
+                <li>Add population (e.g., "medical students")</li>
+                <li>Use MeSH terms when possible</li>
+            </ul>
+        </div>
+    </div>
+    
+    <!-- Results -->
+    <div>
+        <div class="flex justify-between items-center mb-2">
+            <h2 style="font-size: 1.5rem;">Search Results</h2>
+            <span id="result-count" class="text-muted"></span>
+        </div>
+        
+        <div id="results-container">
+            <div class="card">
+                <div class="empty-state">
+                    <div class="empty-state-icon">🔍</div>
+                    <h3>Enter a search query</h3>
+                    <p class="text-muted">Results will appear here</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const searchForm = document.getElementById('search-form');
+    const resultsContainer = document.getElementById('results-container');
+    const resultCount = document.getElementById('result-count');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingText = document.getElementById('loading-text');
+    
+    searchForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const formData = new FormData(searchForm);
+        
+        // Handle checkbox
+        if (!searchForm.querySelector('[name="score_relevance"]').checked) {
+            formData.set('score_relevance', 'false');
+        } else {
+            formData.set('score_relevance', 'true');
+        }
+        
+        loadingText.textContent = 'Searching PubMed...';
+        loadingOverlay.classList.add('active');
+        
+        try {
+            const response = await fetch('/api/literature/search', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Search failed');
+            }
+            
+            const data = await response.json();
+            displayResults(data);
+            
+        } catch (error) {
+            resultsContainer.innerHTML = `
+                <div class="card">
+                    <div class="empty-state" style="padding: 2rem;">
+                        <div class="empty-state-icon">❌</div>
+                        <h3>Search Failed</h3>
+                        <p class="text-muted">${error.message}</p>
+                    </div>
+                </div>
+            `;
+            resultCount.textContent = '';
+        } finally {
+            loadingOverlay.classList.remove('active');
+        }
+    });
+    
+    function displayResults(data) {
+        resultCount.textContent = `${data.total_found} papers found`;
+        
+        if (data.papers.length === 0) {
+            resultsContainer.innerHTML = `
+                <div class="card">
+                    <div class="empty-state" style="padding: 2rem;">
+                        <div class="empty-state-icon">📭</div>
+                        <h3>No Results</h3>
+                        <p class="text-muted">Try different search terms</p>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+        
+        let html = '';
+        data.papers.forEach((paper, index) => {
+            const scoreClass = paper.relevance_score >= 7 ? 'badge-completed' : 
+                              paper.relevance_score >= 5 ? 'badge-minor' : 
+                              paper.relevance_score >= 3 ? 'badge-pending' : 'badge-failed';
+            
+            const authors = paper.authors.join(', ') + (paper.authors.length >= 3 ? ' et al.' : '');
+            
+            html += `
+                <div class="card">
+                    <div class="card-header">
+                        <div style="flex: 1;">
+                            <h3 class="card-title">${index + 1}. ${paper.title}</h3>
+                            <p class="card-subtitle">${authors}</p>
+                        </div>
+                        ${paper.relevance_score > 0 ? `
+                            <span class="badge ${scoreClass}">
+                                Score: ${paper.relevance_score.toFixed(1)}
+                            </span>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="flex gap-2 mb-1 text-small">
+                        <span class="text-muted">PMID: ${paper.pmid}</span>
+                        <span class="text-muted">|</span>
+                        <span class="text-muted">${paper.journal}</span>
+                    </div>
+                    
+                    ${paper.relevance_reason ? `
+                        <p style="color: var(--accent-cyan); font-size: 0.875rem; margin-bottom: 0.5rem;">
+                            💡 ${paper.relevance_reason}
+                        </p>
+                    ` : ''}
+                    
+                    ${paper.abstract ? `
+                        <p class="text-small text-muted" style="line-height: 1.6;">
+                            ${paper.abstract}${paper.abstract.length >= 500 ? '...' : ''}
+                        </p>
+                    ` : '<p class="text-small text-muted">No abstract available</p>'}
+                    
+                    <div class="mt-1">
+                        <a href="https://pubmed.ncbi.nlm.nih.gov/${paper.pmid}/" target="_blank" 
+                           class="btn btn-secondary btn-sm">View on PubMed →</a>
+                    </div>
+                </div>
+            `;
+        });
+        
+        resultsContainer.innerHTML = html;
+    }
+</script>
+{% endblock %}
+

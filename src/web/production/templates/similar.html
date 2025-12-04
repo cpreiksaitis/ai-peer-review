@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+
+{% block title %}Find Similar Papers{% endblock %}
+
+{% block head %}
+<style>
+    .paper-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        padding: 1.25rem;
+        transition: all 0.2s;
+    }
+    
+    .paper-card:hover {
+        border-color: var(--border-hover);
+    }
+    
+    .paper-title {
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: var(--text-primary);
+    }
+    
+    .paper-title a {
+        color: inherit;
+        text-decoration: none;
+    }
+    
+    .paper-title a:hover {
+        color: var(--accent-primary);
+    }
+    
+    .paper-meta {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-bottom: 0.75rem;
+    }
+    
+    .paper-abstract {
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        line-height: 1.6;
+    }
+    
+    .paper-relevance {
+        margin-top: 0.75rem;
+        padding-top: 0.75rem;
+        border-top: 1px solid var(--border-color);
+        font-size: 0.85rem;
+        color: var(--accent-info);
+    }
+    
+    .search-results {
+        margin-top: 2rem;
+    }
+    
+    .results-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="layout-split">
+    <!-- Left: Search Form -->
+    <div>
+        <div class="card">
+            <h2 class="card-title mb-2">Find Similar Papers</h2>
+            <p class="text-muted text-small mb-2">Upload a manuscript to find related literature</p>
+            
+            <form id="search-form">
+                <div class="form-group">
+                    <label class="form-label">PDF File</label>
+                    <div class="file-drop" id="file-drop">
+                        <div class="file-drop-icon">📄</div>
+                        <div class="file-drop-text">
+                            <strong>Drop PDF here</strong><br>
+                            or click to browse
+                        </div>
+                        <input type="file" name="file" id="file-input" accept=".pdf" style="display: none;">
+                    </div>
+                    <p id="file-name" class="text-small text-muted mt-1"></p>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Search Provider</label>
+                    <select name="provider" class="form-select">
+                        {% for p in providers %}
+                        <option value="{{ p.name }}" {% if not p.available %}disabled{% endif %}>
+                            {{ p.display_name }}{% if not p.available %} (not configured){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Max Results</label>
+                    <select name="max_results" class="form-select">
+                        <option value="5">5 papers</option>
+                        <option value="10" selected>10 papers</option>
+                        <option value="15">15 papers</option>
+                        <option value="20">20 papers</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="toggle-container">
+                        <input type="checkbox" name="use_pdf_vision" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">👁️ PDF Vision</span>
+                    </label>
+                    <p class="text-small text-muted mt-1">Analyze figures and tables</p>
+                </div>
+                
+                <button type="submit" class="btn btn-primary" style="width: 100%;">
+                    🔍 Find Similar Papers
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Right: Results -->
+    <div>
+        <div id="results-container">
+            <div class="card text-center" style="padding: 3rem;">
+                <p class="text-muted">Upload a manuscript to search for similar papers</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const searchForm = document.getElementById('search-form');
+    const fileInput = document.getElementById('file-input');
+    const fileDrop = document.getElementById('file-drop');
+    const fileName = document.getElementById('file-name');
+    const resultsContainer = document.getElementById('results-container');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingText = document.getElementById('loading-text');
+    
+    // File drop handling
+    fileDrop.addEventListener('click', () => fileInput.click());
+    fileDrop.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fileDrop.classList.add('dragover');
+    });
+    fileDrop.addEventListener('dragleave', () => fileDrop.classList.remove('dragover'));
+    fileDrop.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileDrop.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            fileName.textContent = e.dataTransfer.files[0].name;
+        }
+    });
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) {
+            fileName.textContent = fileInput.files[0].name;
+        }
+    });
+    
+    // Form submission
+    searchForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (!fileInput.files.length) {
+            alert('Please select a PDF file');
+            return;
+        }
+        
+        const formData = new FormData(searchForm);
+        
+        loadingText.textContent = 'Searching for similar papers...';
+        loadingOverlay.classList.add('active');
+        
+        try {
+            const response = await fetch('/api/similar/find', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                displayResults(data);
+            } else {
+                throw new Error(data.detail || 'Search failed');
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        } finally {
+            loadingOverlay.classList.remove('active');
+        }
+    });
+    
+    function displayResults(data) {
+        if (!data.papers || data.papers.length === 0) {
+            resultsContainer.innerHTML = `
+                <div class="card text-center" style="padding: 3rem;">
+                    <p class="text-muted">No papers found. Try a different search provider.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        let html = `
+            <div class="results-header">
+                <h2 class="card-title">Search Results</h2>
+                <span class="badge badge-info">${data.papers.length} papers found</span>
+            </div>
+            <div class="grid" style="gap: 1rem;">
+        `;
+        
+        data.papers.forEach((paper, i) => {
+            const authors = paper.authors ? paper.authors.join(', ') : '';
+            const meta = [paper.journal, paper.pub_date].filter(Boolean).join(' · ');
+            
+            html += `
+                <div class="paper-card">
+                    <div class="paper-title">
+                        ${paper.url ? `<a href="${paper.url}" target="_blank">${paper.title}</a>` : paper.title}
+                    </div>
+                    ${authors ? `<div class="paper-meta">👥 ${authors}</div>` : ''}
+                    ${meta ? `<div class="paper-meta">📰 ${meta}</div>` : ''}
+                    ${paper.pmid ? `<div class="paper-meta">PMID: ${paper.pmid}</div>` : ''}
+                    ${paper.abstract ? `<div class="paper-abstract">${paper.abstract}</div>` : ''}
+                    ${paper.relevance_reason ? `<div class="paper-relevance">💡 ${paper.relevance_reason}</div>` : ''}
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        resultsContainer.innerHTML = html;
+    }
+</script>
+{% endblock %}
+

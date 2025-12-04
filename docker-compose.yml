@@ -1,0 +1,41 @@
+# AI Peer Review - Docker Compose
+version: '3.8'
+
+services:
+  reviewer:
+    build: .
+    container_name: ai-peer-review
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist data (reviews database and settings)
+      - ./data:/app/data
+      # Mount config for customization
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      # Optional: Pre-configure API keys via environment
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      # - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY}
+      # - PUBMED_EMAIL=${PUBMED_EMAIL}
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# Optional: Add a reverse proxy for SSL termination
+#  nginx:
+#    image: nginx:alpine
+#    ports:
+#      - "443:443"
+#    volumes:
+#      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+#      - ./certs:/etc/nginx/certs:ro
+#    depends_on:
+#      - reviewer
+

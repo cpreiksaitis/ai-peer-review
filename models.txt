@@ -1,0 +1,347 @@
+{
+  "name": "gemini/gemini-flash-latest",
+  "mode": "chat",
+  "litellm_provider": "gemini",
+  "max_input_tokens": 1048576,
+  "max_output_tokens": 65535,
+  "input_cost_per_token": 3e-7,
+  "output_cost_per_token": 0.0000025,
+  "cache_read_input_token_cost": 7.5e-8,
+  "input_cost_per_audio_token": 0.000001,
+  "max_audio_length_hours": 8.4,
+  "max_audio_per_prompt": 1,
+  "max_images_per_prompt": 3000,
+  "max_pdf_size_mb": 30,
+  "max_tokens": 65535,
+  "max_video_length": 1,
+  "max_videos_per_prompt": 10,
+  "output_cost_per_reasoning_token": 0.0000025,
+  "rpm": 15,
+  "source": "https://developers.googleblog.com/en/continuing-to-bring-you-our-latest-models-with-an-improved-gemini-2-5-flash-and-flash-lite-release/",
+  "supported_endpoints": [
+    "/v1/chat/completions",
+    "/v1/completions",
+    "/v1/batch"
+  ],
+  "supported_modalities": [
+    "text",
+    "image",
+    "audio",
+    "video"
+  ],
+  "supported_output_modalities": [
+    "text"
+  ],
+  "supports_audio_output": false,
+  "supports_function_calling": true,
+  "supports_parallel_function_calling": true,
+  "supports_pdf_input": true,
+  "supports_prompt_caching": true,
+  "supports_reasoning": true,
+  "supports_response_schema": true,
+  "supports_system_messages": true,
+  "supports_tool_choice": true,
+  "supports_url_context": true,
+  "supports_vision": true,
+  "supports_web_search": true,
+  "tpm": 250000
+}
+
+{
+  "name": "gemini/gemini-flash-lite-latest",
+  "mode": "chat",
+  "litellm_provider": "gemini",
+  "max_input_tokens": 1048576,
+  "max_output_tokens": 65535,
+  "input_cost_per_token": 1e-7,
+  "output_cost_per_token": 4e-7,
+  "cache_read_input_token_cost": 2.5e-8,
+  "input_cost_per_audio_token": 3e-7,
+  "max_audio_length_hours": 8.4,
+  "max_audio_per_prompt": 1,
+  "max_images_per_prompt": 3000,
+  "max_pdf_size_mb": 30,
+  "max_tokens": 65535,
+  "max_video_length": 1,
+  "max_videos_per_prompt": 10,
+  "output_cost_per_reasoning_token": 4e-7,
+  "rpm": 15,
+  "source": "https://developers.googleblog.com/en/continuing-to-bring-you-our-latest-models-with-an-improved-gemini-2-5-flash-and-flash-lite-release/",
+  "supported_endpoints": [
+    "/v1/chat/completions",
+    "/v1/completions",
+    "/v1/batch"
+  ],
+  "supported_modalities": [
+    "text",
+    "image",
+    "audio",
+    "video"
+  ],
+  "supported_output_modalities": [
+    "text"
+  ],
+  "supports_audio_output": false,
+  "supports_function_calling": true,
+  "supports_parallel_function_calling": true,
+  "supports_pdf_input": true,
+  "supports_prompt_caching": true,
+  "supports_reasoning": true,
+  "supports_response_schema": true,
+  "supports_system_messages": true,
+  "supports_tool_choice": true,
+  "supports_url_context": true,
+  "supports_vision": true,
+  "supports_web_search": true,
+  "tpm": 250000
+}
+
+{
+  "name": "gemini/gemini-3-pro-preview",
+  "mode": "chat",
+  "litellm_provider": "gemini",
+  "max_input_tokens": 1048576,
+  "max_output_tokens": 65535,
+  "input_cost_per_token": 0.000002,
+  "output_cost_per_token": 0.000012,
+  "cache_read_input_token_cost": 2e-7,
+  "cache_read_input_token_cost_above_200k_tokens": 4e-7,
+  "input_cost_per_token_above_200k_tokens": 0.000004,
+  "input_cost_per_token_batches": 0.000001,
+  "max_audio_length_hours": 8.4,
+  "max_audio_per_prompt": 1,
+  "max_images_per_prompt": 3000,
+  "max_pdf_size_mb": 30,
+  "max_tokens": 65535,
+  "max_video_length": 1,
+  "max_videos_per_prompt": 10,
+  "output_cost_per_token_above_200k_tokens": 0.000018,
+  "output_cost_per_token_batches": 0.000006,
+  "rpm": 2000,
+  "source": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+  "supported_endpoints": [
+    "/v1/chat/completions",
+    "/v1/completions",
+    "/v1/batch"
+  ],
+  "supported_modalities": [
+    "text",
+    "image",
+    "audio",
+    "video"
+  ],
+  "supported_output_modalities": [
+    "text"
+  ],
+  "supports_audio_input": true,
+  "supports_function_calling": true,
+  "supports_pdf_input": true,
+  "supports_prompt_caching": true,
+  "supports_reasoning": true,
+  "supports_response_schema": true,
+  "supports_system_messages": true,
+  "supports_tool_choice": true,
+  "supports_video_input": true,
+  "supports_vision": true,
+  "supports_web_search": true,
+  "tpm": 800000
+}
+
+{
+  "name": "gpt-5.1-chat-latest",
+  "mode": "chat",
+  "litellm_provider": "openai",
+  "max_input_tokens": 128000,
+  "max_output_tokens": 16384,
+  "input_cost_per_token": 0.00000125,
+  "output_cost_per_token": 0.00001,
+  "cache_read_input_token_cost": 1.25e-7,
+  "cache_read_input_token_cost_priority": 2.5e-7,
+  "input_cost_per_token_priority": 0.0000025,
+  "max_tokens": 16384,
+  "output_cost_per_token_priority": 0.00002,
+  "supported_endpoints": [
+    "/v1/chat/completions",
+    "/v1/responses"
+  ],
+  "supported_modalities": [
+    "text",
+    "image"
+  ],
+  "supported_output_modalities": [
+    "text",
+    "image"
+  ],
+  "supports_function_calling": false,
+  "supports_native_streaming": true,
+  "supports_parallel_function_calling": false,
+  "supports_pdf_input": true,
+  "supports_prompt_caching": true,
+  "supports_reasoning": true,
+  "supports_response_schema": true,
+  "supports_system_messages": true,
+  "supports_tool_choice": false,
+  "supports_vision": true
+}
+{
+  "name": "gpt-5-nano",
+  "mode": "chat",
+  "litellm_provider": "openai",
+  "max_input_tokens": 272000,
+  "max_output_tokens": 128000,
+  "input_cost_per_token": 5e-8,
+  "output_cost_per_token": 4e-7,
+  "cache_read_input_token_cost": 5e-9,
+  "cache_read_input_token_cost_flex": 2.5e-9,
+  "input_cost_per_token_flex": 2.5e-8,
+  "input_cost_per_token_priority": 0.0000025,
+  "max_tokens": 128000,
+  "output_cost_per_token_flex": 2e-7,
+  "supported_endpoints": [
+    "/v1/chat/completions",
+    "/v1/batch",
+    "/v1/responses"
+  ],
+  "supported_modalities": [
+    "text",
+    "image"
+  ],
+  "supported_output_modalities": [
+    "text"
+  ],
+  "supports_function_calling": true,
+  "supports_native_streaming": true,
+  "supports_parallel_function_calling": true,
+  "supports_pdf_input": true,
+  "supports_prompt_caching": true,
+  "supports_reasoning": true,
+  "supports_response_schema": true,
+  "supports_system_messages": true,
+  "supports_tool_choice": true,
+  "supports_vision": true
+}
+
+{
+  "name": "gpt-5-mini",
+  "mode": "chat",
+  "litellm_provider": "openai",
+  "max_input_tokens": 272000,
+  "max_output_tokens": 128000,
+  "input_cost_per_token": 2.5e-7,
+  "output_cost_per_token": 0.000002,
+  "cache_read_input_token_cost": 2.5e-8,
+  "cache_read_input_token_cost_flex": 1.25e-8,
+  "cache_read_input_token_cost_priority": 4.5e-8,
+  "input_cost_per_token_flex": 1.25e-7,
+  "input_cost_per_token_priority": 4.5e-7,
+  "max_tokens": 128000,
+  "output_cost_per_token_flex": 0.000001,
+  "output_cost_per_token_priority": 0.0000036,
+  "supported_endpoints": [
+    "/v1/chat/completions",
+    "/v1/batch",
+    "/v1/responses"
+  ],
+  "supported_modalities": [
+    "text",
+    "image"
+  ],
+  "supported_output_modalities": [
+    "text"
+  ],
+  "supports_function_calling": true,
+  "supports_native_streaming": true,
+  "supports_parallel_function_calling": true,
+  "supports_pdf_input": true,
+  "supports_prompt_caching": true,
+  "supports_reasoning": true,
+  "supports_response_schema": true,
+  "supports_system_messages": true,
+  "supports_tool_choice": true,
+  "supports_service_tier": true,
+  "supports_vision": true
+}
+
+{
+  "name": "claude-haiku-4-5",
+  "mode": "chat",
+  "litellm_provider": "anthropic",
+  "max_input_tokens": 200000,
+  "max_output_tokens": 64000,
+  "input_cost_per_token": 0.000001,
+  "output_cost_per_token": 0.000005,
+  "cache_creation_input_token_cost": 0.00000125,
+  "cache_read_input_token_cost": 1e-7,
+  "cache_creation_input_token_cost_above_1hr": 0.000002,
+  "max_tokens": 64000,
+  "supports_assistant_prefill": true,
+  "supports_function_calling": true,
+  "supports_computer_use": true,
+  "supports_pdf_input": true,
+  "supports_prompt_caching": true,
+  "supports_reasoning": true,
+  "supports_response_schema": true,
+  "supports_tool_choice": true,
+  "supports_vision": true
+}
+
+{
+  "name": "claude-sonnet-4-5",
+  "mode": "chat",
+  "litellm_provider": "anthropic",
+  "max_input_tokens": 200000,
+  "max_output_tokens": 64000,
+  "input_cost_per_token": 0.000003,
+  "output_cost_per_token": 0.000015,
+  "cache_creation_input_token_cost": 0.00000375,
+  "cache_read_input_token_cost": 3e-7,
+  "input_cost_per_token_above_200k_tokens": 0.000006,
+  "output_cost_per_token_above_200k_tokens": 0.0000225,
+  "cache_creation_input_token_cost_above_200k_tokens": 0.0000075,
+  "cache_read_input_token_cost_above_200k_tokens": 6e-7,
+  "max_tokens": 64000,
+  "search_context_cost_per_query": {
+    "search_context_size_high": 0.01,
+    "search_context_size_low": 0.01,
+    "search_context_size_medium": 0.01
+  },
+  "supports_assistant_prefill": true,
+  "supports_computer_use": true,
+  "supports_function_calling": true,
+  "supports_pdf_input": true,
+  "supports_prompt_caching": true,
+  "supports_reasoning": true,
+  "supports_response_schema": true,
+  "supports_tool_choice": true,
+  "supports_vision": true,
+  "tool_use_system_prompt_tokens": 346
+}
+
+{
+  "name": "claude-opus-4-5-20251101",
+  "mode": "chat",
+  "litellm_provider": "anthropic",
+  "max_input_tokens": 200000,
+  "max_output_tokens": 64000,
+  "input_cost_per_token": 0.000005,
+  "output_cost_per_token": 0.000025,
+  "cache_creation_input_token_cost": 0.00000625,
+  "cache_read_input_token_cost": 5e-7,
+  "cache_creation_input_token_cost_above_1hr": 0.00001,
+  "max_tokens": 64000,
+  "search_context_cost_per_query": {
+    "search_context_size_high": 0.01,
+    "search_context_size_low": 0.01,
+    "search_context_size_medium": 0.01
+  },
+  "supports_assistant_prefill": true,
+  "supports_computer_use": true,
+  "supports_function_calling": true,
+  "supports_pdf_input": true,
+  "supports_prompt_caching": true,
+  "supports_reasoning": true,
+  "supports_response_schema": true,
+  "supports_tool_choice": true,
+  "supports_vision": true,
+  "tool_use_system_prompt_tokens": 159
+}

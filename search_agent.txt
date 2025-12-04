@@ -1,0 +1,51 @@
+from openai import OpenAI
+client = OpenAI()
+
+response = client.responses.create(
+  model="gpt-5-mini",
+  input=[
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "find similar papers to this one"
+        },
+        {
+          "type": "input_file",
+          "filename": "AEM Education and Training  2024  Rose  AI passed the test  but can it make the rounds.pdf",
+          "file_data": "data:application/pdf;base64,JVBERi0xLj
+        }
+      ]
+    }
+  ],
+  text={
+    "format": {
+      "type": "text"
+    },
+    "verbosity": "medium"
+  },
+  reasoning={
+    "effort": "medium",
+    "summary": "auto"
+  },
+  tools=[
+    {
+      "type": "web_search",
+      "user_location": {
+        "type": "approximate"
+      },
+      "search_context_size": "medium",
+      "filters": {
+        "allowed_domains": [
+          "pubmed.ncbi.nlm.nih.gov"
+        ]
+      }
+    }
+  ],
+  store=True,
+  include=[
+    "reasoning.encrypted_content",
+    "web_search_call.action.sources"
+  ]
+)

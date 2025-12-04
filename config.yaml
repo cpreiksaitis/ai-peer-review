@@ -1,0 +1,49 @@
+# Multi-Agent Peer Review System Configuration
+# API keys should be set as environment variables:
+#   - OPENAI_API_KEY
+#   - ANTHROPIC_API_KEY
+#   - GEMINI_API_KEY (or GOOGLE_API_KEY)
+
+# Model assignments for each agent
+# Available models:
+#   Claude: claude-sonnet-4-5, claude-haiku-4-5, claude-opus-4-5-20251101
+#   GPT: gpt-5-mini, gpt-5.1-chat-latest, gpt-5-nano
+#   Gemini: gemini/gemini-3-pro-preview, gemini/gemini-flash-latest, gemini/gemini-flash-lite-latest
+
+# Optimal configuration (based on A/B testing across 4 papers, 18 configs)
+# midtier_communication achieved highest score/$ ratio (96.7) with avg score 8.82
+models:
+  orchestrator: "claude-haiku-4-5"
+  methodologist: "gpt-5-nano"
+  domain_expert: "gemini/gemini-flash-lite-latest"
+  communication: "gpt-5-mini"  # Mid-tier upgrade - highest impact agent
+  ethics: "gpt-5-nano"
+
+# Debate configuration
+debate:
+  rounds: 2  # Number of debate rounds between agents
+  temperature: 0.7  # Temperature for LLM calls
+
+# Literature search configuration
+literature:
+  email: ""  # Required for PubMed API - set via PUBMED_EMAIL env var or here
+  max_results: 10  # Maximum number of related papers to retrieve
+  include_abstracts: true
+  
+  # Search provider for finding similar papers
+  # Options: pubmed, openai, gemini, claude, perplexity
+  # - pubmed: Direct PubMed API + LLM query generation (fast, structured)
+  # - openai: GPT with web_search tool (agentic, can filter to PubMed domain)
+  # - gemini: Gemini with Google Search grounding
+  # - claude: Claude with web search tool
+  # - perplexity: Sonar models with native search
+  default_provider: "pubmed"
+  
+  # Focus searches on academic/PubMed sources (for agentic providers)
+  focus_pubmed: true
+
+# Output configuration
+output:
+  directory: "output"
+  include_debate_log: true  # Whether to save the full debate transcript
+
