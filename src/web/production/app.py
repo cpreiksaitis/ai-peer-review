@@ -573,12 +573,15 @@ async def find_similar_papers(
         tmp_path = tmp.name
     
     try:
+        print(f"[DEBUG] find_similar: Processing {file.filename} with provider={provider}")
         manuscript = get_manuscript_content(tmp_path, include_pdf_data=use_pdf_vision)
         manuscript_text = manuscript["text"]
         pdf_base64 = manuscript.get("pdf_base64") if use_pdf_vision else None
+        print(f"[DEBUG] find_similar: Extracted {len(manuscript_text)} chars, pdf_base64={'yes' if pdf_base64 else 'no'}")
         
         search_provider = get_provider(provider)
         provider_pdf = pdf_base64 if (use_pdf_vision and search_provider.supports_pdf) else None
+        print(f"[DEBUG] find_similar: Using provider {provider}, supports_pdf={search_provider.supports_pdf}")
         
         loop = asyncio.get_event_loop()
         session = await loop.run_in_executor(
@@ -590,6 +593,7 @@ async def find_similar_papers(
                 pdf_base64=provider_pdf,
             )
         )
+        print(f"[DEBUG] find_similar: Got {len(session.results)} results, summary={session.query_summary}")
         
         papers = []
         for result in session.results:
