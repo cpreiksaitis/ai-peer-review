@@ -25,6 +25,6 @@ RUN mkdir -p data
 # Expose port (Railway uses $PORT)
 EXPOSE 8000
 
-# Run production server - use shell form to expand $PORT
-CMD uvicorn src.web.production.app:app --host 0.0.0.0 --port ${PORT:-8000}
+# Run production server - explicit shell for variable expansion
+CMD ["/bin/sh", "-c", "uvicorn src.web.production.app:app --host 0.0.0.0 --port ${PORT:-8000}"]
 
