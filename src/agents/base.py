@@ -316,7 +316,7 @@ def _get_prompts():
 _original_generate_initial_review = BaseReviewerAgent.generate_initial_review
 
 
-def _patched_generate_initial_review(self, manuscript_text, literature_context="", review_prompt=""):
+def _patched_generate_initial_review(self, manuscript_text, literature_context="", review_prompt="", pdf_base64=None):
     from src.prompts import INITIAL_REVIEW_PROMPT
 
     prompt_parts = []
@@ -328,7 +328,7 @@ def _patched_generate_initial_review(self, manuscript_text, literature_context="
     prompt_parts.append(review_prompt or INITIAL_REVIEW_PROMPT)
 
     user_content = "\n".join(prompt_parts)
-    messages = self._build_messages(user_content)
+    messages = self._build_messages(user_content, pdf_base64=pdf_base64)
 
     review = self._call_llm(messages, operation="initial_review")
 
