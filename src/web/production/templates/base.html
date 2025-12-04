@@ -493,6 +493,7 @@
             <nav>
                 <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Reviews</a>
                 <a href="/similar" class="{% if request.url.path == '/similar' %}active{% endif %}">Find Similar</a>
+                <a href="/test-models" class="{% if request.url.path == '/test-models' %}active{% endif %}">Test Models</a>
                 <a href="/settings" class="{% if request.url.path == '/settings' %}active{% endif %}">⚙️ Settings</a>
             </nav>
         </div>
@@ -513,4 +514,3 @@
     {% block scripts %}{% endblock %}
 </body>
 </html>
-

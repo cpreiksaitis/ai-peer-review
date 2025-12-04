@@ -245,8 +245,16 @@ async def settings_page(request: Request):
         {
             "request": request,
             "settings": masked_settings,
-            "api_status": api_status,
+        "api_status": api_status,
         },
+    )
+
+@app.get("/test-models", response_class=HTMLResponse)
+async def test_models_page(request: Request):
+    """Simple UI to run model connectivity checks."""
+    return templates.TemplateResponse(
+        "test_models.html",
+        {"request": request},
     )
 
 
@@ -681,4 +689,3 @@ async def test_models():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
