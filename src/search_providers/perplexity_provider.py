@@ -135,10 +135,10 @@ Focus on: similar methodology, same research question, recent related work, and 
         results = []
         
         # Split by paper markers - handle multiple formats
-        # Format 1: **Paper 1**
-        # Format 2: ## 1. Title
-        # Format 3: 1. **Title**
-        paper_sections = re.split(r'\n\s*(?:\*\*Paper \d+\*\*|## \d+\.|^\d+\.\s+\*\*)', text, flags=re.MULTILINE)
+        # Format 1: ## Paper 1: or ## Paper 1.
+        # Format 2: **Paper 1** or **1.**
+        # Format 3: ## 1. Title
+        paper_sections = re.split(r'\n\s*(?:## Paper \d+[:\.]?|## \d+[\.\:]|\*\*Paper \d+\*\*|\*\*\d+[\.\:])', text, flags=re.MULTILINE)
         
         for section in paper_sections[1:max_results+1]:
             result = self._parse_paper_section(section)
@@ -171,8 +171,8 @@ Focus on: similar methodology, same research question, recent related work, and 
             authors_str = authors_match.group(1).strip()
             authors = [a.strip() for a in re.split(r',|;| et al', authors_str) if a.strip()][:5]
         
-        # Extract PMID - handle **PMID:** format
-        pmid_match = re.search(r'\*?\*?PMID\*?\*?[:\s]*(\d+)', section, re.I)
+        # Extract PMID - handle **PMID:** format (colon inside or outside bold)
+        pmid_match = re.search(r'PMID[:\s\*]*(\d+)', section, re.I)
         pmid = pmid_match.group(1) if pmid_match else None
         
         # Extract DOI - handle **DOI:** format
@@ -189,7 +189,10 @@ Focus on: similar methodology, same research question, recent related work, and 
             year_match = re.search(r'\b(20\d{2})\b', section)
         pub_date = year_match.group(1) if year_match else None
         
-        # Extract relevance explanation
+        # Extract abstract if present
+        abstract = ""
+        
+        # Extract relevance explanation (use as abstract if no abstract)
         relevance_match = re.search(r'\*?\*?Relevance\*?\*?[:\s]*(.+?)(?:\n\n|##|$)', section, re.I | re.DOTALL)
         relevance_reason = relevance_match.group(1).strip() if relevance_match else ""
         
