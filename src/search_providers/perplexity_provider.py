@@ -45,34 +45,22 @@ class PerplexitySearchProvider(SearchProvider):
     ) -> SearchSession:
         """Search for similar papers using Perplexity academic search."""
         
-        search_instruction = f"""Find {max_results} peer-reviewed academic papers most relevant to this manuscript.
+        # Simple, direct prompt - let Perplexity's search do the work
+        search_instruction = f"""Search PubMed and academic databases to find {max_results} peer-reviewed papers most relevant to this research manuscript.
 
-Focus on finding:
-1. Papers with SIMILAR METHODOLOGY (same study design, similar population)
-2. Papers addressing the SAME RESEARCH QUESTION
-3. RECENT publications (last 3 years) on this topic
-4. FOUNDATIONAL papers in this field
-5. Papers with CONTRADICTORY findings (if any)
+For each paper found, provide:
+- Title
+- Authors (first author et al.)
+- PMID (PubMed ID) - REQUIRED if from PubMed
+- DOI
+- Journal
+- Year
+- Brief relevance explanation
 
-For each paper, provide in this exact format:
+Focus on: similar methodology, same research question, recent related work, and foundational papers.
 
-**Paper 1**
-- Title: [full title]
-- Authors: [first author et al.]
-- PMID: [PubMed ID if available]
-- DOI: [DOI]
-- Journal: [journal name]
-- Year: [publication year]
-- Abstract: [1-2 sentence summary]
-- Relevance: [why this paper matters for reviewing the manuscript]
-- Type: [methodology/competitor/foundational/recent/contradictory]
-
-Manuscript to find related papers for:
----
-{manuscript_text[:8000]}
----
-
-Return exactly {max_results} papers, prioritizing methodological comparators and direct competitors."""
+{"[Manuscript text provided below]" if not pdf_base64 else "[See attached PDF manuscript]"}
+{manuscript_text[:6000] if not pdf_base64 else ""}"""
 
         try:
             # Check API key first
@@ -84,40 +72,19 @@ Return exactly {max_results} papers, prioritizing methodological comparators and
                     reasoning="Please add PERPLEXITY_API_KEY to your environment variables.",
                 )
             
-            # Build message content - include PDF if available
-            if pdf_base64:
-                # Perplexity accepts base64 PDF via file_url (no data: prefix needed)
-                user_content = [
-                    {"type": "text", "text": search_instruction},
-                    {"type": "file_url", "file_url": {"url": pdf_base64}},
-                ]
-            else:
-                user_content = search_instruction
+            # Build messages - send PDF directly if available
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are a research librarian. Search academic databases to find relevant papers. Always include PubMed IDs (PMIDs) when available."
+                },
+                {"role": "user", "content": search_instruction}
+            ]
             
-            # Use Perplexity with web search enabled
-            # Focus on academic domains via search_domain_filter
+            # Use Perplexity with web search
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a research librarian helping find academic papers for peer review. Focus on PubMed and peer-reviewed sources. Always include PMIDs when available."
-                    },
-                    {"role": "user", "content": user_content}
-                ],
-                extra_body={
-                    "search_domain_filter": [
-                        "pubmed.ncbi.nlm.nih.gov",
-                        "scholar.google.com",
-                        "sciencedirect.com",
-                        "nature.com",
-                        "nejm.org",
-                        "thelancet.com",
-                        "jamanetwork.com",
-                        "bmj.com",
-                    ],
-                    "return_citations": True,
-                },
+                messages=messages,
             )
             
             return self._parse_response(response, max_results)

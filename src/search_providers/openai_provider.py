@@ -39,31 +39,22 @@ class OpenAISearchProvider(SearchProvider):
     ) -> SearchSession:
         """Search for similar papers using OpenAI's web search."""
         
-        # Prepare the search instruction
-        search_instruction = f"""Find {max_results} academic papers that are most similar or relevant to this manuscript.
+        # Simple, direct prompt - let web search do the work
+        search_instruction = f"""Search PubMed and academic databases to find {max_results} peer-reviewed papers most relevant to this research manuscript.
 
-For each paper found, extract:
+For each paper, provide:
 - Title
-- Authors  
-- Abstract (or summary if abstract not available)
-- PubMed ID (PMID) if available
-- DOI if available
-- Journal name
-- Publication date
-- URL
+- Authors
+- PMID (PubMed ID) - include if from PubMed
+- DOI
+- Journal
+- Year
+- Why it's relevant
 
-Focus on finding papers that:
-1. Address the same or similar research question
-2. Use similar methodology
-3. Study similar populations or settings
-4. Could be cited as related work
+Focus on: similar methodology, same research question, recent related work.
 
-Manuscript to find similar papers for:
----
-{manuscript_text[:12000]}
----
-
-Search thoroughly and return the most relevant papers. Explain your search strategy and why each paper is relevant."""
+{"[See attached PDF]" if pdf_base64 else "[Manuscript below]"}
+{'' if pdf_base64 else manuscript_text[:10000]}"""
 
         # Configure tools
         tools = [
