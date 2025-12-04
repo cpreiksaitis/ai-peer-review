@@ -84,8 +84,15 @@ Return exactly {max_results} papers, prioritizing methodological comparators and
                     reasoning="Please add PERPLEXITY_API_KEY to your environment variables.",
                 )
             
-            # Build message content - text only for now (Perplexity PDF support is limited)
-            user_content = search_instruction
+            # Build message content - include PDF if available
+            if pdf_base64:
+                # Perplexity accepts base64 PDF via file_url (no data: prefix needed)
+                user_content = [
+                    {"type": "text", "text": search_instruction},
+                    {"type": "file_url", "file_url": {"url": pdf_base64}},
+                ]
+            else:
+                user_content = search_instruction
             
             # Use Perplexity with web search enabled
             # Focus on academic domains via search_domain_filter
