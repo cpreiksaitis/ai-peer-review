@@ -49,6 +49,18 @@ if STATIC_DIR.exists():
 # Templates
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
+# Global exception handler to prevent 502s
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    import traceback
+    print(f"[ERROR] Unhandled exception: {exc}")
+    print(f"[ERROR] Traceback: {traceback.format_exc()}")
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)[:100]}"}
+    )
+
 # Global state
 db_engine = None
 session_maker = None
@@ -498,19 +510,25 @@ def extract_recommendation(review_text: str) -> str:
 @app.get("/api/review/{review_id}/status")
 async def get_review_status(review_id: int):
     """Get review status for polling."""
-    from src.database import get_review
-    
-    async with session_maker() as session:
-        review = await get_review(session, review_id)
-    
-    if not review:
-        raise HTTPException(status_code=404, detail="Review not found")
-    
-    return {
-        "id": review.id,
-        "status": review.status,
-        "recommendation": review.recommendation,
-    }
+    try:
+        from src.database import get_review
+        
+        async with session_maker() as session:
+            review = await get_review(session, review_id)
+        
+        if not review:
+            raise HTTPException(status_code=404, detail="Review not found")
+        
+        return {
+            "id": review.id,
+            "status": review.status,
+            "recommendation": review.recommendation,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] get_review_status failed: {e}")
+        return {"id": review_id, "status": "error: server issue", "recommendation": None}
 
 
 @app.get("/api/review/{review_id}/live-output")
