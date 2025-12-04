@@ -75,6 +75,15 @@ Manuscript to find related papers for:
 Return exactly {max_results} papers, prioritizing methodological comparators and direct competitors."""
 
         try:
+            # Check API key first
+            if not os.environ.get("PERPLEXITY_API_KEY"):
+                return SearchSession(
+                    provider=self.name,
+                    query_summary="Error: PERPLEXITY_API_KEY not configured",
+                    results=[],
+                    reasoning="Please add PERPLEXITY_API_KEY to your environment variables.",
+                )
+            
             # Build message content - text only for now (Perplexity PDF support is limited)
             user_content = search_instruction
             
