@@ -640,6 +640,43 @@ async def find_similar_papers(
         Path(tmp_path).unlink(missing_ok=True)
 
 
+@app.get("/api/debug/test-models")
+async def test_models():
+    """Test API connectivity for all configured models."""
+    import litellm
+    
+    results = {}
+    models_to_test = [
+        ("openai", "gpt-4o-mini"),
+        ("anthropic", "claude-haiku-4-5"),
+        ("gemini", "gemini/gemini-flash-lite-latest"),
+    ]
+    
+    for provider, model in models_to_test:
+        try:
+            response = litellm.completion(
+                model=model,
+                messages=[{"role": "user", "content": "Say OK"}],
+                max_tokens=5,
+            )
+            results[provider] = {
+                "status": "ok",
+                "model": model,
+                "response": response.choices[0].message.content[:50],
+            }
+        except Exception as e:
+            import traceback
+            results[provider] = {
+                "status": "error",
+                "model": model,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": traceback.format_exc()[-500:],
+            }
+    
+    return results
+
+
 # Run with: uvicorn src.web.production.app:app --host 0.0.0.0 --port 8000
 if __name__ == "__main__":
     import uvicorn
