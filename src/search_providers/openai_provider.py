@@ -48,78 +48,47 @@ Context:
 
     def _run_search(self, instruction: str, max_results: int, focus_pubmed: bool) -> tuple[SearchSession, list]:
         """Perform a single search call."""
-        try:
-            tools = [
-                {
-                    "type": "web_search",
-                    "user_location": {"type": "approximate"},
-                    "search_context_size": "high",
-                }
-            ]
-            if focus_pubmed:
-                tools[0]["filters"] = {
-                    "allowed_domains": [
-                        "pubmed.ncbi.nlm.nih.gov",
-                        "ncbi.nlm.nih.gov",
-                        "scholar.google.com",
-                    ]
-                }
-            content = [{"type": "input_text", "text": instruction}]
-            
-            # Check if responses API is available (defensive check)
-            if not hasattr(self.client, "responses"):
-                raise AttributeError("Client has no 'responses' attribute")
-                
-            response = self.client.responses.create(
-                model=self.model,
-                input=[{"role": "user", "content": content}],
-                tools=tools,
-                reasoning={"effort": "medium", "summary": "auto"},
-                include=["reasoning.encrypted_content", "web_search_call.action.sources"],
-                max_output_tokens=5000,
-                timeout=120,
-            )
-            session = self._parse_response(response, max_results)
-            return session, response
-            
-        except (AttributeError, Exception) as e:
-            print(f"[WARN] OpenAI Responses API available. Falling back to standard chat: {e}")
-            return self._run_fallback_search(instruction, max_results)
-
-    def _run_fallback_search(self, instruction: str, max_results: int) -> tuple[SearchSession, None]:
-        """Fallback to standard chat completion (no web search)."""
-        # Fallback to a standard model since 'gpt-5-mini' likely doesn't exist for chat completions
-        fallback_model = "gpt-4o"
+        tools = [
+            {
+                "type": "web_search",
+                "user_location": {"type": "approximate"},
+                "search_context_size": "medium", # User snippet used medium
+            }
+        ]
+        if focus_pubmed:
+            tools[0]["filters"] = {
+                "allowed_domains": [
+                    "pubmed.ncbi.nlm.nih.gov",
+                    "ncbi.nlm.nih.gov",
+                    "scholar.google.com",
+                    "pubmed.gov", # Added from user snippet
+                ]
+            }
         
-        fallback_instruction = instruction + "\n\nNOTE: Live web search is currently unavailable. Please generate a list of relevant papers based on your internal knowledge base. Explicitly mark the source as 'AI Knowledge' for each."
+        # User snippet has specific structure for reasoning and text
+        # Using gpt-5-nano as requested implies the model supports these specific parameters
         
-        try:
-            response = self.client.chat.completions.create(
-                model=fallback_model,
-                messages=[{"role": "user", "content": fallback_instruction}],
-                temperature=0.2,
-            )
-            
-            text = response.choices[0].message.content
-            results = self._extract_papers_from_text(text, max_results)
-            
-            # Mark results as from AI knowledge
-            for r in results:
-                if r.source == "Web" or r.source == "PubMed": 
-                    r.source = "AI Knowledge (No Web)"
-            
-            session = SearchSession(
-                provider=self.name,
-                query_summary=f"Found {len(results)} papers via OpenAI (Internal Knowledge - Fallback)",
-                results=results,
-                reasoning=text,
-                queries_used=[],
-                total_cost=0.0,
-            )
-            return session, None
-            
-        except Exception as e:
-            raise e
+        content = [{"type": "input_text", "text": instruction}]
+        
+        response = self.client.responses.create(
+            model="gpt-5-nano", # Forced as per user request
+            input=[{"role": "user", "content": content}],
+            text={
+                "format": {
+                    "type": "text"
+                },
+                "verbosity": "medium"
+            },
+            reasoning={
+                "effort": "medium",
+                "summary": "auto"
+            },
+            tools=tools,
+            store=True,
+            include=["reasoning.encrypted_content", "web_search_call.action.sources"],
+        )
+        session = self._parse_response(response, max_results)
+        return session, response
 
     def search(
         self,
@@ -128,22 +97,11 @@ Context:
         focus_pubmed: bool = True,
         pdf_base64: Optional[str] = None,
     ) -> SearchSession:
-        """Search for similar papers using OpenAI's web search with fallback."""
+        """Search for similar papers using OpenAI's web search using Responses API."""
         instruction = self._build_instruction(manuscript_text, max_results, pdf_base64)
-        sessions = []
         try:
             session, _ = self._run_search(instruction, max_results, focus_pubmed)
-            sessions.append(session)
-            # If no results and we were restricting to PubMed, retry without domain filter
-            if not session.results and focus_pubmed:
-                fallback_session, _ = self._run_search(instruction, max_results, focus_pubmed=False)
-                fallback_session.query_summary = "Fallback (no PubMed filter): " + fallback_session.query_summary
-                sessions.append(fallback_session)
-            # Pick the first session with results, else the last attempted
-            for s in sessions:
-                if s.results:
-                    return s
-            return sessions[-1]
+            return session
         except Exception as e:
             return SearchSession(
                 provider=self.name,
