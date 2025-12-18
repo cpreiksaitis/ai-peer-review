@@ -154,9 +154,12 @@ Prioritize similar methodology, same research question, recent work, and foundat
         """Extract paper information from response text."""
         results = []
         
+        # Ensure text is clean
+        text = text.strip()
+        
         # Split by paper markers - robust regex for various numbered list formats
-        # Matches: "## 1. Title", "## Title", "1. **Title**", "**1. Title**"
-        # We split by the start of a new numbered item or header that looks like a paper start
+        # We prepend \n to text to make the regex handle the first item if it starts immediately
+        search_text = "\n" + text
         
         # Regex explanation:
         # \n\s*                 # Start with newline
@@ -166,15 +169,31 @@ Prioritize similar methodology, same research question, recent work, and foundat
         #   | \d+\.\s+\*\*      # 1. **
         #   | \*\*\d+\.\s+      # **1. 
         # )
-        paper_sections = re.split(r'\n\s*(?:##\s*\d+\.?\s+|##\s+|\d+\.\s+\*\*|\*\*\d+\.\s+)', text)
+        paper_sections = re.split(r'\n\s*(?:##\s*\d+\.?\s+|##\s+|\d+\.\s+\*\*|\*\*\d+\.\s+)', search_text)
         
-        # Skip the first section (preamble)
-        for section in paper_sections[1:max_results+1]:
+        # The first section might be a preamble or empty if the text started with a valid marker (due to prepended \n)
+        # We iterate through ALL sections and try to parse them
+        for section in paper_sections:
             if len(section.strip()) < 50:
                 continue
+            
             result = self._parse_paper_section(section)
             if result:
                 results.append(result)
+                if len(results) >= max_results:
+                    break
+        
+        # Fallback: If no structured papers found, return the whole text as one result
+        # This prevents "just links" behavior when the model outputs a different format
+        if not results and len(text) > 100:
+            results.append(SearchResult(
+                title="Full Search Response (Parsing Failed)",
+                authors=["Perplexity AI"],
+                abstract=text, # Put the full text in abstract/relevance
+                source="Perplexity (Unparsed)",
+                url="",
+                relevance_reason="Automatic parsing failed. Full response provided."
+            ))
         
         return results
     

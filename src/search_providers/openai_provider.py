@@ -48,47 +48,58 @@ Context:
 
     def _run_search(self, instruction: str, max_results: int, focus_pubmed: bool) -> tuple[SearchSession, list]:
         """Perform a single search call."""
-        tools = [
-            {
-                "type": "web_search",
-                "user_location": {"type": "approximate"},
-                "search_context_size": "medium", # User snippet used medium
-            }
-        ]
-        if focus_pubmed:
-            tools[0]["filters"] = {
-                "allowed_domains": [
-                    "pubmed.ncbi.nlm.nih.gov",
-                    "ncbi.nlm.nih.gov",
-                    "scholar.google.com",
-                    "pubmed.gov", # Added from user snippet
-                ]
-            }
-        
-        # User snippet has specific structure for reasoning and text
-        # Using gpt-5-nano as requested implies the model supports these specific parameters
-        
-        content = [{"type": "input_text", "text": instruction}]
-        
-        response = self.client.responses.create(
-            model="gpt-5-nano", # Forced as per user request
-            input=[{"role": "user", "content": content}],
-            text={
-                "format": {
-                    "type": "text"
+        try:
+            tools = [
+                {
+                    "type": "web_search",
+                    "user_location": {"type": "approximate"},
+                    "search_context_size": "medium", # User snippet used medium
+                }
+            ]
+            if focus_pubmed:
+                tools[0]["filters"] = {
+                    "allowed_domains": [
+                        "pubmed.ncbi.nlm.nih.gov",
+                        "ncbi.nlm.nih.gov",
+                        "scholar.google.com",
+                        "pubmed.gov", 
+                    ]
+                }
+            
+            # Use strict string content for the user message to avoid structure issues
+            content = instruction
+            
+            print(f"[DEBUG] OpenAI Search: Starting request with model={self.model}")
+            
+            # Check if responses API is available (defensive check)
+            if not hasattr(self.client, "responses"):
+                raise AttributeError("Client has no 'responses' attribute")
+
+            response = self.client.responses.create(
+                model="gpt-5-nano", # Forced as per user request
+                input=[{"role": "user", "content": content}],
+                text={
+                    "format": {
+                        "type": "text"
+                    },
+                    "verbosity": "medium"
                 },
-                "verbosity": "medium"
-            },
-            reasoning={
-                "effort": "medium",
-                "summary": "auto"
-            },
-            tools=tools,
-            store=True,
-            include=["reasoning.encrypted_content", "web_search_call.action.sources"],
-        )
-        session = self._parse_response(response, max_results)
-        return session, response
+                reasoning={
+                    "effort": "medium",
+                    "summary": "auto"
+                },
+                tools=tools,
+                store=True,
+                include=["reasoning.encrypted_content", "web_search_call.action.sources"],
+            )
+            session = self._parse_response(response, max_results)
+            return session, response
+            
+        except Exception as e:
+            import traceback
+            trace = traceback.format_exc()
+            print(f"[ERROR] OpenAI Search Failed:\n{trace}")
+            raise e
 
     def search(
         self,
