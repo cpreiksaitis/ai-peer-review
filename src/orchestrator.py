@@ -178,8 +178,12 @@ class Orchestrator:
                         "content": [
                             {"type": "text", "text": prompt_text},
                             {
-                                "type": "file",
-                                "file": {"file_data": f"data:application/pdf;base64,{clean_pdf}"}
+                                "type": "document",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "application/pdf",
+                                    "data": clean_pdf,
+                                }
                             }
                         ],
                     },

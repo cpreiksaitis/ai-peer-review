@@ -150,13 +150,18 @@ def create_pdf_message_content(pdf_base64: str, text_prompt: str) -> list[dict]:
     Returns:
         List of content items for litellm message
     """
+    # Ensure no data uri prefix for cleanliness, though caller might have stripped it
+    if "," in pdf_base64:
+        pdf_base64 = pdf_base64.split(",", 1)[-1]
+
     return [
         {"type": "text", "text": text_prompt},
         {
-            "type": "file",
-            "file": {
-                "file_data": pdf_base64,
-                "format": "application/pdf",
+            "type": "document",
+            "source": {
+                "type": "base64",
+                "media_type": "application/pdf",
+                "data": pdf_base64,
             }
         },
     ]
