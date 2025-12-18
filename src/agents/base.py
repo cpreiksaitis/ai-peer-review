@@ -139,6 +139,8 @@ class BaseReviewerAgent(ABC):
 
         # Add current user message (with PDF if provided and not empty)
         if pdf_base64 and len(pdf_base64) > 100:
+            # Strip any data: prefix to avoid invalid base64 payloads
+            clean_pdf = pdf_base64.split(",", 1)[-1]
             # Anthropic/Claude document format
             messages.append({
                 "role": "user",
@@ -149,7 +151,7 @@ class BaseReviewerAgent(ABC):
                         "source": {
                             "type": "base64",
                             "media_type": "application/pdf",
-                            "data": pdf_base64,
+                            "data": clean_pdf,
                         }
                     },
                 ]
@@ -248,7 +250,8 @@ class BaseReviewerAgent(ABC):
             for msg in self.conversation_history:
                 messages.append({"role": msg.role, "content": msg.content})
             # User message with PDF
-            pdf_content = create_pdf_message_content(pdf_base64, text_prompt)
+            clean_pdf = pdf_base64.split(",", 1)[-1] if pdf_base64 else ""
+            pdf_content = create_pdf_message_content(clean_pdf, text_prompt)
             messages.append({"role": "user", "content": pdf_content})
         else:
             messages = self._build_messages(text_prompt)
@@ -399,4 +402,3 @@ Be concise but specific."""
 BaseReviewerAgent.generate_initial_review = _patched_generate_initial_review
 BaseReviewerAgent.participate_in_debate = _patched_participate_in_debate
 BaseReviewerAgent.get_final_position = _patched_get_final_position
-

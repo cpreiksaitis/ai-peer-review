@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Test Models{% endblock %}
+
+{% block head %}
+<style>
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.35rem 0.65rem;
+        border-radius: var(--radius-sm);
+        font-weight: 600;
+        font-size: 0.85rem;
+    }
+    .status-ok {
+        background: rgba(16, 185, 129, 0.15);
+        color: var(--accent-success);
+    }
+    .status-error {
+        background: rgba(239, 68, 68, 0.15);
+        color: var(--accent-danger);
+    }
+    .result-card {
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        padding: 1rem;
+        background: var(--bg-tertiary);
+        margin-bottom: 0.75rem;
+    }
+    .mono {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div>
+            <div class="card-title">Model Connectivity Test</div>
+            <p class="text-muted">Calls each configured provider with a tiny prompt to verify credentials and network reachability.</p>
+        </div>
+        <button id="run-tests" class="btn btn-primary">Run Tests</button>
+    </div>
+    <div id="results"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const button = document.getElementById('run-tests');
+    const results = document.getElementById('results');
+
+    function renderResult(provider, data) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'result-card';
+
+        const statusClass = data.status === 'ok' ? 'status-ok' : 'status-error';
+        const statusText = data.status === 'ok' ? 'OK' : 'Error';
+
+        wrapper.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <span style="font-weight:600;text-transform:capitalize;">${provider}</span>
+                    <span class="status-badge ${statusClass}">${statusText}</span>
+                </div>
+                <span class="text-muted text-small">${data.model || ''}</span>
+            </div>
+            <div class="mono">${data.status === 'ok'
+                ? (data.response || 'Success')
+                : (data.error || 'Unknown error')}</div>
+        `;
+        results.appendChild(wrapper);
+    }
+
+    async function runTests() {
+        button.disabled = true;
+        button.textContent = 'Running...';
+        results.innerHTML = '<p class="text-muted">Testing models, please wait...</p>';
+        try {
+            const res = await fetch('/api/debug/test-models');
+            if (!res.ok) throw new Error('Request failed');
+            const data = await res.json();
+            results.innerHTML = '';
+            Object.entries(data).forEach(([provider, info]) => renderResult(provider, info));
+        } catch (err) {
+            results.innerHTML = '<p class="text-muted">Could not run tests: ' + (err.message || err) + '</p>';
+        } finally {
+            button.disabled = false;
+            button.textContent = 'Run Tests';
+        }
+    }
+
+    button.addEventListener('click', runTests);
+    runTests();
+</script>
+{% endblock %}

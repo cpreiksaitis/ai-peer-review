@@ -30,33 +30,24 @@ class OpenAISearchProvider(SearchProvider):
         """Check if OpenAI API key is configured."""
         return bool(os.environ.get("OPENAI_API_KEY"))
     
-    def search(
-        self,
-        manuscript_text: str,
-        max_results: int = 10,
-        focus_pubmed: bool = True,
-        pdf_base64: Optional[str] = None,
-    ) -> SearchSession:
-        """Search for similar papers using OpenAI's web search."""
-        
-        # Simple, direct prompt - let web search do the work
-        search_instruction = f"""Search PubMed and academic databases to find {max_results} peer-reviewed papers most relevant to this research manuscript.
+    def _build_instruction(self, manuscript_text: str, max_results: int, pdf_base64: Optional[str]) -> str:
+        """Build a strict instruction to avoid clarifying questions."""
+        return f"""You are a research assistant. Return the {max_results} most relevant papers immediately without asking clarifying questions.
 
-For each paper, provide:
-- Title
-- Authors
-- PMID (PubMed ID) - include if from PubMed
-- DOI
-- Journal
-- Year
-- Why it's relevant
+Instructions:
+- Use the manuscript context below to infer topic/methods; do not ask the user anything.
+- Search PubMed (and Scholar if helpful) and return exactly {max_results} peer-reviewed papers.
+- For each paper include: Title; Authors; PMID (if PubMed); DOI; Journal; Year; Why it's relevant (1–2 lines); URL.
+- Prefer similar methodology, same research question, recent work. If unsure, still pick the best matches.
+- Output only the papers; no preamble or follow-up questions.
+- If context is limited, make reasonable assumptions and still return papers.
 
-Focus on: similar methodology, same research question, recent related work.
-
+Context:
 {"[See attached PDF]" if pdf_base64 else "[Manuscript below]"}
 {'' if pdf_base64 else manuscript_text[:10000]}"""
 
-        # Configure tools
+    def _run_search(self, instruction: str, max_results: int, focus_pubmed: bool) -> tuple[SearchSession, list]:
+        """Perform a single search call."""
         tools = [
             {
                 "type": "web_search",
@@ -64,8 +55,6 @@ Focus on: similar methodology, same research question, recent related work.
                 "search_context_size": "high",
             }
         ]
-        
-        # Add domain filter if focusing on PubMed
         if focus_pubmed:
             tools[0]["filters"] = {
                 "allowed_domains": [
@@ -74,30 +63,43 @@ Focus on: similar methodology, same research question, recent related work.
                     "scholar.google.com",
                 ]
             }
-        
+        content = [{"type": "input_text", "text": instruction}]
+        response = self.client.responses.create(
+            model=self.model,
+            input=[{"role": "user", "content": content}],
+            tools=tools,
+            reasoning={"effort": "medium", "summary": "auto"},
+            include=["reasoning.encrypted_content", "web_search_call.action.sources"],
+            max_output_tokens=5000,
+            timeout=120,
+        )
+        session = self._parse_response(response, max_results)
+        return session, response
+
+    def search(
+        self,
+        manuscript_text: str,
+        max_results: int = 10,
+        focus_pubmed: bool = True,
+        pdf_base64: Optional[str] = None,
+    ) -> SearchSession:
+        """Search for similar papers using OpenAI's web search with fallback."""
+        instruction = self._build_instruction(manuscript_text, max_results, pdf_base64)
+        sessions = []
         try:
-            # Build content - text only (OpenAI Responses API doesn't support PDF in this format)
-            content = [{"type": "input_text", "text": search_instruction}]
-            
-            # Call OpenAI Responses API
-            response = self.client.responses.create(
-                model=self.model,
-                input=[
-                    {
-                        "role": "user",
-                        "content": content
-                    }
-                ],
-                tools=tools,
-                reasoning={"effort": "medium", "summary": "auto"},
-                include=["reasoning.encrypted_content", "web_search_call.action.sources"],
-            )
-            
-            # Parse the response
-            return self._parse_response(response, max_results)
-            
+            session, _ = self._run_search(instruction, max_results, focus_pubmed)
+            sessions.append(session)
+            # If no results and we were restricting to PubMed, retry without domain filter
+            if not session.results and focus_pubmed:
+                fallback_session, _ = self._run_search(instruction, max_results, focus_pubmed=False)
+                fallback_session.query_summary = "Fallback (no PubMed filter): " + fallback_session.query_summary
+                sessions.append(fallback_session)
+            # Pick the first session with results, else the last attempted
+            for s in sessions:
+                if s.results:
+                    return s
+            return sessions[-1]
         except Exception as e:
-            # Return empty session with error
             return SearchSession(
                 provider=self.name,
                 query_summary=f"Error: {str(e)}",
@@ -141,20 +143,21 @@ Focus on: similar methodology, same research question, recent related work.
         # Parse papers from the text response
         results = self._extract_papers_from_text(reasoning, max_results)
         
-        # If we didn't parse papers from text, create results from sources
+        # If we didn't parse papers from text, create results from sources (even non-PubMed)
         if not results and sources:
             for source in sources[:max_results]:
+                pmid = None
                 if "pubmed" in source["url"].lower():
                     pmid_match = re.search(r'/(\d+)', source["url"])
                     pmid = pmid_match.group(1) if pmid_match else None
-                    results.append(SearchResult(
-                        title=source["title"] or f"PubMed Article {pmid}",
-                        authors=[],
-                        abstract="",
-                        source="PubMed",
-                        url=source["url"],
-                        pmid=pmid,
-                    ))
+                results.append(SearchResult(
+                    title=source["title"] or (f"PubMed Article {pmid}" if pmid else source["url"] or "Unknown title"),
+                    authors=[],
+                    abstract="",
+                    source="PubMed" if pmid else "Web",
+                    url=source["url"],
+                    pmid=pmid,
+                ))
         
         # Calculate costs
         tokens_used = 0
@@ -261,4 +264,3 @@ Focus on: similar methodology, same research question, recent related work.
             doi=doi,
             journal=journal,
         )
-

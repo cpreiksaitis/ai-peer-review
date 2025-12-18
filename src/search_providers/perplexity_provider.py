@@ -20,16 +20,13 @@ class PerplexitySearchProvider(SearchProvider):
     
     @property
     def client(self):
-        """Lazy load Perplexity client using OpenAI SDK."""
+        """Lazy load Perplexity client using official SDK."""
         if self._client is None:
-            from openai import OpenAI
+            from perplexity import Perplexity
             api_key = os.environ.get("PERPLEXITY_API_KEY")
             if not api_key:
                 raise ValueError("PERPLEXITY_API_KEY not set")
-            self._client = OpenAI(
-                api_key=api_key,
-                base_url="https://api.perplexity.ai",
-            )
+            self._client = Perplexity(api_key=api_key)
         return self._client
     
     def is_available(self) -> bool:
@@ -45,19 +42,20 @@ class PerplexitySearchProvider(SearchProvider):
     ) -> SearchSession:
         """Search for similar papers using Perplexity academic search."""
         
-        # Simple, direct prompt - let Perplexity's search do the work
+        # Direct, structured prompt to get full details (not just links)
         search_instruction = f"""Search PubMed and academic databases to find {max_results} peer-reviewed papers most relevant to this research manuscript.
 
-For each paper found, provide:
+Return a numbered list of exactly {max_results} papers. For each include:
 - Title
 - Authors (first author et al.)
-- PMID (PubMed ID) - REQUIRED if from PubMed
+- PMID (if PubMed)
 - DOI
 - Journal
 - Year
-- Brief relevance explanation
+- URL
+- 2–3 sentence relevance explanation (why this paper matches)
 
-Focus on: similar methodology, same research question, recent related work, and foundational papers.
+Prioritize similar methodology, same research question, recent work, and foundational papers. Do not ask clarifying questions; make reasonable assumptions if context is limited.
 
 {"[Manuscript text provided below]" if not pdf_base64 else "[See attached PDF manuscript]"}
 {manuscript_text[:6000] if not pdf_base64 else ""}"""
@@ -81,10 +79,12 @@ Focus on: similar methodology, same research question, recent related work, and 
                 {"role": "user", "content": search_instruction}
             ]
             
-            # Use Perplexity with web search
+            # Use Perplexity chat completion with academic search
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
+                search_mode="academic",
+                web_search_options={"search_context_size": "high"},
             )
             
             return self._parse_response(response, max_results)
@@ -110,6 +110,18 @@ Focus on: similar methodology, same research question, recent related work, and 
         
         # Parse papers from text
         results = self._extract_papers_from_text(text, max_results)
+        
+        # If none parsed, create fallbacks from citations/sources
+        if not results and search_steps:
+            for step in search_steps[:max_results]:
+                if step.get("type") == "source":
+                    results.append(SearchResult(
+                        title=step.get("title") or step.get("url") or "Unknown title",
+                        authors=[],
+                        abstract="",
+                        source="Web",
+                        url=step.get("url") or "",
+                    ))
         
         # Calculate costs
         tokens_used = 0
@@ -215,4 +227,3 @@ Focus on: similar methodology, same research question, recent related work, and 
             pub_date=pub_date,
             relevance_reason=relevance_reason,
         )
-

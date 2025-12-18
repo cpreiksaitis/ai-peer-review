@@ -20,7 +20,7 @@ class PubMedSearchProvider(SearchProvider):
     display_name = "PubMed Direct"
     supports_pdf = True  # Uses LLM for query generation, which can use PDF vision
     
-    def __init__(self, model: str = "gpt-5-nano"):
+    def __init__(self, model: str = "claude-haiku-4-5"):
         self.model = model
     
     def is_available(self) -> bool:
@@ -139,6 +139,8 @@ class PubMedSearchProvider(SearchProvider):
         # Use PDF vision with Claude (correct Anthropic document format)
         if pdf_base64 and len(pdf_base64) > 100:
             print(f"[DEBUG] _generate_queries: Using claude-haiku-4-5 with PDF vision ({len(pdf_base64)} chars)")
+            # Anthropic expects raw base64 without data: prefix
+            clean_base64 = pdf_base64.split(",", 1)[-1] if pdf_base64.startswith("data:") else pdf_base64
             messages = [
                 {
                     "role": "user",
@@ -149,7 +151,7 @@ class PubMedSearchProvider(SearchProvider):
                             "source": {
                                 "type": "base64",
                                 "media_type": "application/pdf",
-                                "data": pdf_base64,
+                                "data": clean_base64,
                             }
                         }
                     ]
@@ -185,4 +187,3 @@ class PubMedSearchProvider(SearchProvider):
         result = [l.strip().strip("-").strip('"').strip("0123456789. ") for l in lines if l.strip() and len(l.strip()) > 10][:5]
         print(f"[DEBUG] _generate_queries: Parsed {len(result)} queries from lines")
         return result
-

@@ -169,6 +169,7 @@ class Orchestrator:
         # Use PDF vision if available and model supports it
         if pdf_base64 and self.use_pdf_vision:
             import litellm
+            clean_pdf = pdf_base64.split(",", 1)[-1]
             if litellm.supports_pdf_input(model=self.model):
                 messages = [
                     {"role": "system", "content": ORCHESTRATOR_SYSTEM_PROMPT},
@@ -176,7 +177,10 @@ class Orchestrator:
                         "role": "user",
                         "content": [
                             {"type": "text", "text": prompt_text},
-                            {"type": "file", "file": {"file_data": f"data:application/pdf;base64,{pdf_base64}"}}
+                            {
+                                "type": "file",
+                                "file": {"file_data": f"data:application/pdf;base64,{clean_pdf}"}
+                            }
                         ],
                     },
                 ]
@@ -475,9 +479,12 @@ class Orchestrator:
             agent.cost_tracker = self.cost_tracker
 
         # Determine if we can use PDF vision
+        clean_pdf = None
+        if pdf_base64:
+            clean_pdf = pdf_base64.split(",", 1)[-1]
         use_vision = (
             self.use_pdf_vision 
-            and pdf_base64 is not None 
+            and clean_pdf is not None 
             and supports_pdf_input(model=self.model, custom_llm_provider=None)
         )
         
@@ -489,7 +496,7 @@ class Orchestrator:
             manuscript_text=manuscript_text,
             literature_context="",
             cost_tracker=self.cost_tracker,
-            pdf_base64=pdf_base64 if use_vision else None,
+            pdf_base64=clean_pdf if use_vision else None,
             use_pdf_vision=use_vision,
         )
 
@@ -502,7 +509,7 @@ class Orchestrator:
                     manuscript_text=manuscript_text,
                     max_results=max_literature_results,
                     email=pubmed_email,
-                    pdf_base64=pdf_base64,  # Use PDF vision for query generation
+                    pdf_base64=clean_pdf,  # Use PDF vision for query generation
                 )
                 session.literature_context = literature_context
             except Exception as e:
@@ -594,4 +601,3 @@ def create_orchestrator_from_config(config: dict[str, Any]) -> Orchestrator:
         debate_rounds=debate_config.get("rounds", 2),
         agents=agents,
     )
-

@@ -21,9 +21,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-
-# Load environment variables
-load_dotenv()
+from fastapi.responses import StreamingResponse
 
 # Paths
 BASE_DIR = Path(__file__).parent
@@ -91,6 +89,20 @@ def save_settings(settings: dict) -> None:
         json.dump(settings, f, indent=2)
 
 
+def sanitize_api_keys() -> None:
+    """Trim whitespace/newlines from API keys to avoid header errors."""
+    for key in [
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
+        "GEMINI_API_KEY",
+        "PERPLEXITY_API_KEY",
+    ]:
+        val = os.environ.get(key)
+        if val:
+            os.environ[key] = val.strip()
+
+
 def apply_settings(settings: dict) -> None:
     """Apply settings to environment variables."""
     key_mapping = {
@@ -114,6 +126,29 @@ def check_api_status() -> dict:
         "perplexity": bool(os.environ.get("PERPLEXITY_API_KEY")),
         "pubmed": bool(os.environ.get("PUBMED_EMAIL")),
     }
+
+
+def sanitize_base64_data(data: str | None) -> str | None:
+    """Strip data: prefix and fix padding for base64 strings."""
+    if not data:
+        return None
+    clean = data.split(",", 1)[-1]
+    # Fix padding
+    padding = len(clean) % 4
+    if padding:
+        clean += "=" * (4 - padding)
+    return clean
+
+
+# Load environment variables and configure providers
+load_dotenv()
+sanitize_api_keys()
+os.environ.setdefault("OPENAI_API_BASE", "https://api.openai.com/v1")
+os.environ.setdefault("ANTHROPIC_API_URL", "https://api.anthropic.com")
+os.environ.setdefault("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta")
+
+import litellm
+# Use provider defaults; OpenAI base can still be set via env if needed.
 
 
 def get_available_providers() -> list[dict]:
@@ -316,7 +351,8 @@ async def upload_manuscript(
         manuscript = get_manuscript_content(tmp_path, include_pdf_data=use_pdf_vision)
         manuscript_text = manuscript["text"]
         manuscript_title = title or manuscript["metadata"].get("title") or file.filename
-        pdf_base64 = manuscript.get("pdf_base64") if use_pdf_vision else None
+        raw_pdf_base64 = manuscript.get("pdf_base64") if use_pdf_vision else None
+        pdf_base64 = sanitize_base64_data(raw_pdf_base64)
         
         # Create database record
         print(f"[DEBUG] Creating database record for {file.filename}")
@@ -577,6 +613,7 @@ async def delete_review(review_id: int):
 
 @app.post("/api/similar/find")
 async def find_similar_papers(
+    request: Request,
     file: UploadFile = File(...),
     max_results: int = Form(10),
     provider: str = Form("pubmed"),
@@ -585,12 +622,20 @@ async def find_similar_papers(
     """Find similar papers for an uploaded PDF."""
     from src.document import get_manuscript_content
     from src.search_providers import get_provider, PROVIDERS
+    from src.search_providers.openai_provider import OpenAISearchProvider
     
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
     
     if provider not in PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
+    
+    # Special streaming route support via header
+    try:
+        stream = request.headers.get("x-stream", "false").lower() == "true"
+    except NameError:
+        print("[WARN] 'request' not defined in find_similar_papers - disabling streaming")
+        stream = False
     
     # Save temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
@@ -602,23 +647,82 @@ async def find_similar_papers(
         print(f"[DEBUG] find_similar: Processing {file.filename} with provider={provider}")
         manuscript = get_manuscript_content(tmp_path, include_pdf_data=use_pdf_vision)
         manuscript_text = manuscript["text"]
-        pdf_base64 = manuscript.get("pdf_base64") if use_pdf_vision else None
+        raw_pdf_base64 = manuscript.get("pdf_base64") if use_pdf_vision else None
+        pdf_base64 = sanitize_base64_data(raw_pdf_base64)
         print(f"[DEBUG] find_similar: Extracted {len(manuscript_text)} chars, pdf_base64={'yes' if pdf_base64 else 'no'}")
         
         search_provider = get_provider(provider)
         provider_pdf = pdf_base64 if (use_pdf_vision and search_provider.supports_pdf) else None
         print(f"[DEBUG] find_similar: Using provider {provider}, supports_pdf={search_provider.supports_pdf}")
         
+        # Streaming mode for OpenAI provider
+        if stream and provider == "openai":
+            def event_generator():
+                try:
+                    # Build instruction using provider helper
+                    if isinstance(search_provider, OpenAISearchProvider):
+                        instruction = search_provider._build_instruction(manuscript_text, max_results, provider_pdf)
+                    else:
+                        instruction = manuscript_text[:5000]
+                    
+                    tools = [
+                        {
+                            "type": "web_search",
+                            "user_location": {"type": "approximate"},
+                            "search_context_size": "high",
+                            "filters": {
+                                "allowed_domains": [
+                                    "pubmed.ncbi.nlm.nih.gov",
+                                    "ncbi.nlm.nih.gov",
+                                    "scholar.google.com",
+                                ]
+                            }
+                        }
+                    ]
+                    content = [{"type": "input_text", "text": instruction}]
+                    client = search_provider.client if isinstance(search_provider, OpenAISearchProvider) else None
+                    resp = client.responses.create(
+                        model=search_provider.model,
+                        input=[{"role": "user", "content": content}],
+                        tools=tools,
+                        reasoning={"effort": "medium", "summary": "auto"},
+                        include=["reasoning.encrypted_content", "web_search_call.action.sources"],
+                        max_output_tokens=5000,
+                        stream=True,
+                    )
+                    for event in resp:
+                        try:
+                            if hasattr(event, "output_text"):
+                                delta = getattr(event.output_text, "delta", "")
+                                if delta:
+                                    yield f"data: {delta}\n\n"
+                            elif event.type == "response.output_text.delta":
+                                delta = getattr(event, "delta", "")
+                                if delta:
+                                    yield f"data: {delta}\n\n"
+                        except Exception:
+                            continue
+                    yield "data: [DONE]\n\n"
+                except Exception as e:
+                    yield f"data: [ERROR] {str(e)}\n\n"
+            return StreamingResponse(event_generator(), media_type="text/event-stream")
+        
         loop = asyncio.get_event_loop()
-        session = await loop.run_in_executor(
-            None,
-            lambda: search_provider.search(
-                manuscript_text=manuscript_text,
-                max_results=max_results,
-                focus_pubmed=True,
-                pdf_base64=provider_pdf,
+        try:
+            session = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: search_provider.search(
+                        manuscript_text=manuscript_text,
+                        max_results=max_results,
+                        focus_pubmed=True,
+                        pdf_base64=provider_pdf,
+                    )
+                ),
+                timeout=120,
             )
-        )
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail="Search timed out. Please retry.")
         print(f"[DEBUG] find_similar: Got {len(session.results)} results, summary={session.query_summary}")
         
         papers = []
@@ -640,6 +744,12 @@ async def find_similar_papers(
             "provider": provider,
             "total_found": len(papers),
             "papers": papers,
+            "query_summary": session.query_summary,
+            "reasoning": session.reasoning,
+            "queries_used": session.queries_used,
+            "search_steps": session.search_steps,
+            "cost": session.total_cost,
+            "tokens": session.tokens_used,
         }
     
     except Exception as e:
@@ -652,13 +762,39 @@ async def find_similar_papers(
 async def test_models():
     """Test API connectivity for all configured models."""
     import litellm
+    import os
+    
+    # Turn on verbose logging for this endpoint to surface HTTP errors in logs
+    os.environ["LITELLM_LOG"] = "DEBUG"
+    litellm._turn_on_debug()
     
     results = {}
     models_to_test = [
-        ("openai", "gpt-4o-mini"),
-        ("anthropic", "claude-haiku-4-5"),
-        ("gemini", "gemini/gemini-flash-lite-latest"),
+        ("openai_litellm", "gpt-5-mini"),
+        ("anthropic", "anthropic/claude-haiku-4-5"),
+        ("gemini", "gemini-flash-latest"),
     ]
+    
+    # Direct OpenAI check (bypasses litellm) to isolate network/auth issues
+    try:
+        from openai import OpenAI
+        client = OpenAI()
+        model_list = client.models.list()
+        first_model = model_list.data[0].id if getattr(model_list, "data", []) else "unknown"
+        results["openai_direct"] = {
+            "status": "ok",
+            "model": "models.list",
+            "response": f"Fetched models, first={first_model}",
+        }
+    except Exception as e:
+        import traceback
+        results["openai_direct"] = {
+            "status": "error",
+            "model": "models.list",
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc()[-500:],
+        }
     
     for provider, model in models_to_test:
         try:

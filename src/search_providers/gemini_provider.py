@@ -14,7 +14,7 @@ class GeminiSearchProvider(SearchProvider):
     display_name = "Gemini Grounded Search"
     supports_pdf = True  # Gemini supports PDF/document vision
     
-    def __init__(self, model: str = "gemini-2.0-flash"):
+    def __init__(self, model: str = "gemini-flash-latest"):
         self.model = model
         self._client = None
     
@@ -96,7 +96,6 @@ Use Google Search to find the most relevant academic papers. Return exactly {max
             try:
                 from google.generativeai.types import Tool
                 
-                # Create grounding tool
                 google_search_tool = Tool(
                     google_search=self.client.protos.GoogleSearch()
                 )
@@ -125,7 +124,31 @@ Use Google Search to find the most relevant academic papers. Return exactly {max
                     },
                 )
             
-            return self._parse_response(response, max_results)
+            session = self._parse_response(response, max_results)
+            # If no results, retry once without pubmed focus (broader search)
+            if not session.results and focus_pubmed:
+                try:
+                    response2 = model.generate_content(
+                        content_parts,
+                        generation_config={
+                            "temperature": 0.3,
+                            "max_output_tokens": 4096,
+                        },
+                    )
+                    session2 = self._parse_response(response2, max_results)
+                    session2.query_summary = "Fallback (no PubMed focus): " + session2.query_summary
+                    if session2.results:
+                        return session2
+                except Exception:
+                    pass
+            return session
+        except Exception as e:
+            return SearchSession(
+                provider=self.name,
+                query_summary=f"Error: {str(e)}",
+                results=[],
+                reasoning=f"Search failed: {str(e)}",
+            )
             
         except Exception as e:
             return SearchSession(
@@ -165,9 +188,20 @@ Use Google Search to find the most relevant academic papers. Return exactly {max
         
         # Parse papers from text
         results = self._extract_papers_from_text(text, max_results)
+        # If none parsed, create fallbacks from grounding sources
+        if not results and search_steps:
+            for step in search_steps[:max_results]:
+                if step.get("type") == "source":
+                    results.append(SearchResult(
+                        title=step.get("title") or step.get("url") or "Unknown title",
+                        authors=[],
+                        abstract="",
+                        source="Web",
+                        url=step.get("url") or "",
+                    ))
         
         # Estimate tokens and cost
-        tokens_used = len(text.split()) * 1.3  # Rough estimate
+        tokens_used = len(text.split()) * 1.3 if text else 0  # Rough estimate
         total_cost = tokens_used * 0.0000001  # Gemini Flash pricing
         
         return SearchSession(
@@ -267,4 +301,3 @@ Use Google Search to find the most relevant academic papers. Return exactly {max
             pub_date=pub_date,
             relevance_reason=relevance_reason,
         )
-
