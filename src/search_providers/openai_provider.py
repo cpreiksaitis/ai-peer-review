@@ -43,8 +43,8 @@ Instructions:
 - If context is limited, make reasonable assumptions and still return papers.
 
 Context:
-{"[See attached PDF]" if pdf_base64 else "[Manuscript below]"}
-{'' if pdf_base64 else manuscript_text[:10000]}"""
+[Manuscript Text]
+{manuscript_text[:30000]}"""
 
     def _run_search(self, instruction: str, max_results: int, focus_pubmed: bool) -> tuple[SearchSession, list]:
         """Perform a single search call."""

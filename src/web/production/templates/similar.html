@@ -11,38 +11,38 @@
         padding: 1.25rem;
         transition: all 0.2s;
     }
-    
+
     .paper-card:hover {
         border-color: var(--border-hover);
     }
-    
+
     .paper-title {
         font-weight: 600;
         margin-bottom: 0.5rem;
         color: var(--text-primary);
     }
-    
+
     .paper-title a {
         color: inherit;
         text-decoration: none;
     }
-    
+
     .paper-title a:hover {
         color: var(--accent-primary);
     }
-    
+
     .paper-meta {
         font-size: 0.8rem;
         color: var(--text-muted);
         margin-bottom: 0.75rem;
     }
-    
+
     .paper-abstract {
         font-size: 0.9rem;
         color: var(--text-secondary);
         line-height: 1.6;
     }
-    
+
     .paper-relevance {
         margin-top: 0.75rem;
         padding-top: 0.75rem;
@@ -50,11 +50,11 @@
         font-size: 0.85rem;
         color: var(--accent-info);
     }
-    
+
     .search-results {
         margin-top: 2rem;
     }
-    
+
     .results-header {
         display: flex;
         justify-content: space-between;
@@ -71,7 +71,7 @@
         <div class="card">
             <h2 class="card-title mb-2">Find Similar Papers</h2>
             <p class="text-muted text-small mb-2">Upload a manuscript to find related literature</p>
-            
+
             <form id="search-form">
                 <div class="form-group">
                     <label class="form-label">PDF File</label>
@@ -85,7 +85,7 @@
                     </div>
                     <p id="file-name" class="text-small text-muted mt-1"></p>
                 </div>
-                
+
                 <div class="form-group">
                     <label class="form-label">Search Provider</label>
                     <select name="provider" class="form-select">
@@ -96,7 +96,7 @@
                         {% endfor %}
                     </select>
                 </div>
-                
+
                 <div class="form-group">
                     <label class="form-label">Max Results</label>
                     <select name="max_results" class="form-select">
@@ -106,7 +106,7 @@
                         <option value="20">20 papers</option>
                     </select>
                 </div>
-                
+
                 <div class="form-group">
                     <label class="toggle-container">
                         <input type="checkbox" name="use_pdf_vision" checked>
@@ -115,14 +115,14 @@
                     </label>
                     <p class="text-small text-muted mt-1">Analyze figures and tables</p>
                 </div>
-                
+
                 <button type="submit" class="btn btn-primary" style="width: 100%;">
                     🔍 Find Similar Papers
                 </button>
             </form>
         </div>
     </div>
-    
+
     <!-- Right: Results -->
     <div>
         <div id="results-container">
@@ -143,7 +143,7 @@
     const resultsContainer = document.getElementById('results-container');
     const loadingOverlay = document.getElementById('loading-overlay');
     const loadingText = document.getElementById('loading-text');
-    
+
     // File drop handling
     fileDrop.addEventListener('click', () => fileInput.click());
     fileDrop.addEventListener('dragover', (e) => {
@@ -164,40 +164,43 @@
             fileName.textContent = fileInput.files[0].name;
         }
     });
-    
+
     // Form submission
     searchForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        
+
         if (!fileInput.files.length) {
             alert('Please select a PDF file');
             return;
         }
-        
+
         const formData = new FormData(searchForm);
         const provider = formData.get('provider');
-        
+
         loadingText.textContent = 'Searching for similar papers...';
         loadingOverlay.classList.add('active');
         resultsContainer.innerHTML = `<div class="card text-center" style="padding: 3rem;"><p class="text-muted">Searching...</p></div>`;
-        
+
         try {
             const useStream = provider === 'openai';
             const headers = useStream ? { 'x-stream': 'true' } : {};
-            
+
             const response = await fetch('/api/similar/find', {
                 method: 'POST',
                 body: formData,
                 headers: headers
             });
-            
+
             if (useStream) {
+                // Remove blocking overlay so reasoning is visible
+                loadingOverlay.classList.remove('active');
+
                 // Handle SSE Stream
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let reasoningText = "";
                 let finalData = null;
-                
+
                 // create reasoning container
                 resultsContainer.innerHTML = `
                     <div class="card mb-3" style="background: var(--bg-secondary); border-left: 3px solid var(--accent-primary);">
@@ -208,14 +211,14 @@
                     </div>
                 `;
                 const reasoningContent = document.getElementById('reasoning-content');
-                
+
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
-                    
+
                     const chunk = decoder.decode(value, { stream: true });
                     const lines = chunk.split('\n');
-                    
+
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
                             const dataStr = line.slice(6);
@@ -223,7 +226,7 @@
                             if (dataStr.startsWith('[ERROR]')) {
                                 throw new Error(dataStr);
                             }
-                            
+
                             try {
                                 const event = JSON.parse(dataStr);
                                 if (event.type === 'delta') {
@@ -242,17 +245,17 @@
                         }
                     }
                 }
-                
+
                 if (finalData) {
-                     // Wait a moment so user sees the "thinking" finish
-                     setTimeout(() => {
+                    // Wait a moment so user sees the "thinking" finish
+                    setTimeout(() => {
                         displayResults(finalData);
                         // Keep reasoning visible but collapsed or above results?
                         // Let's prepend reasoning back to results if we want, or just replace.
                         // For now we replace, but maybe add reasoning string to data for displayResults to show?
-                     }, 500);
+                    }, 500);
                 }
-                
+
             } else {
                 // Standard JSON response
                 const data = await response.json();
@@ -262,14 +265,14 @@
                     throw new Error(data.detail || 'Search failed');
                 }
             }
-            
+
         } catch (error) {
             alert('Error: ' + error.message);
         } finally {
             loadingOverlay.classList.remove('active');
         }
     });
-    
+
     function displayResults(data) {
         if (!data.papers || data.papers.length === 0) {
             resultsContainer.innerHTML = `
@@ -279,7 +282,7 @@
             `;
             return;
         }
-        
+
         let html = `
             <div class="results-header">
                 <h2 class="card-title">Search Results</h2>
@@ -287,11 +290,11 @@
             </div>
             <div class="grid" style="gap: 1rem;">
         `;
-        
+
         data.papers.forEach((paper, i) => {
             const authors = paper.authors ? paper.authors.join(', ') : '';
             const meta = [paper.journal, paper.pub_date].filter(Boolean).join(' · ');
-            
+
             html += `
                 <div class="paper-card">
                     <div class="paper-title">
@@ -305,10 +308,9 @@
                 </div>
             `;
         });
-        
+
         html += '</div>';
         resultsContainer.innerHTML = html;
     }
 </script>
 {% endblock %}
-
