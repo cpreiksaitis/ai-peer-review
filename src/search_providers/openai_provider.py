@@ -66,8 +66,8 @@ Context:
                     ]
                 }
             
-            # Use strict string content for the user message to avoid structure issues
-            content = instruction
+            # Use explicit input text object structure to ensure compatibility
+            content = [{"type": "input_text", "text": instruction}]
             
             print(f"[DEBUG] OpenAI Search: Starting request with model={self.model}")
             
