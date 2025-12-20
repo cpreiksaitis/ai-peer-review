@@ -101,6 +101,107 @@ Context:
             print(f"[ERROR] OpenAI Search Failed:\n{trace}")
             raise e
 
+    def stream_search(
+        self,
+        manuscript_text: str,
+        max_results: int = 10,
+        focus_pubmed: bool = True,
+        pdf_base64: Optional[str] = None,
+    ):
+        """
+        Stream search results using OpenAI's Responses API.
+        Yields events:
+        - {"type": "delta", "content": "..."}
+        - {"type": "result", "papers": [...], "query_summary": "..."}
+        """
+        import json
+        
+        instruction = self._build_instruction(manuscript_text, max_results, pdf_base64)
+        
+        tools = [
+            {
+                "type": "web_search",
+                "user_location": {"type": "approximate"},
+                "search_context_size": "medium",
+            }
+        ]
+        if focus_pubmed:
+            tools[0]["filters"] = {
+                "allowed_domains": [
+                    "pubmed.ncbi.nlm.nih.gov",
+                    "ncbi.nlm.nih.gov",
+                    "scholar.google.com",
+                    "pubmed.gov", 
+                ]
+            }
+        
+        content = [{"type": "input_text", "text": instruction}]
+        
+        try:
+            # Check for responses attribute
+            if not hasattr(self.client, "responses"):
+                raise AttributeError("Client has no 'responses' attribute")
+
+            stream = self.client.responses.create(
+                model="gpt-5-nano",
+                input=[{"role": "user", "content": content}],
+                text={"format": {"type": "text"}, "verbosity": "medium"},
+                reasoning={"effort": "medium", "summary": "auto"},
+                tools=tools,
+                store=True,
+                include=["reasoning.encrypted_content", "web_search_call.action.sources"],
+                stream=True,
+            )
+            
+            accumulated_text = ""
+            
+            for chunk in stream:
+                # Handle text deltas
+                delta = ""
+                if hasattr(chunk, "output_text") and hasattr(chunk.output_text, "delta"):
+                    delta = chunk.output_text.delta
+                elif hasattr(chunk, "delta"): # Fallback for some response shapes
+                    delta = chunk.delta
+                
+                if delta:
+                    accumulated_text += delta
+                    # Yield delta event
+                    yield f"data: {json.dumps({'type': 'delta', 'content': delta})}\n\n"
+            
+            # Streaming finished, parse results from accumulated text
+            # We can use the existing parsing logic if we create a pseudo-response object
+            # or just call _extract_papers_from_text directly which is easier.
+            results = self._extract_papers_from_text(accumulated_text, max_results)
+            
+            # Serialize results
+            final_data = {
+                "type": "result",
+                "papers": [
+                    {
+                        "title": r.title,
+                        "authors": r.authors,
+                        "journal": r.journal,
+                        "pub_date": r.pub_date,
+                        "url": r.url,
+                        "abstract": r.abstract,
+                        "pmid": r.pmid,
+                        "relevance_reason": r.relevance_reason,
+                        "relevance_score": r.relevance_score
+                    } for r in results
+                ],
+                "query_summary": f"Found {len(results)} papers via OpenAI stream",
+                "reasoning": accumulated_text # Return full reasoning text too
+            }
+            
+            yield f"data: {json.dumps(final_data)}\n\n"
+            yield "data: [DONE]\n\n"
+            
+        except Exception as e:
+            import traceback
+            print(f"[ERROR] Stream Search Failed:\n{traceback.format_exc()}")
+            # Yield error event
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
     def search(
         self,
         manuscript_text: str,

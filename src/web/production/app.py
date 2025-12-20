@@ -657,55 +657,19 @@ async def find_similar_papers(
         
         # Streaming mode for OpenAI provider
         if stream and provider == "openai":
-            def event_generator():
-                try:
-                    # Build instruction using provider helper
-                    if isinstance(search_provider, OpenAISearchProvider):
-                        instruction = search_provider._build_instruction(manuscript_text, max_results, provider_pdf)
-                    else:
-                        instruction = manuscript_text[:5000]
-                    
-                    tools = [
-                        {
-                            "type": "web_search",
-                            "user_location": {"type": "approximate"},
-                            "search_context_size": "high",
-                            "filters": {
-                                "allowed_domains": [
-                                    "pubmed.ncbi.nlm.nih.gov",
-                                    "ncbi.nlm.nih.gov",
-                                    "scholar.google.com",
-                                ]
-                            }
-                        }
-                    ]
-                    content = [{"type": "input_text", "text": instruction}]
-                    client = search_provider.client if isinstance(search_provider, OpenAISearchProvider) else None
-                    resp = client.responses.create(
-                        model=search_provider.model,
-                        input=[{"role": "user", "content": content}],
-                        tools=tools,
-                        reasoning={"effort": "medium", "summary": "auto"},
-                        include=["reasoning.encrypted_content", "web_search_call.action.sources"],
-                        max_output_tokens=5000,
-                        stream=True,
-                    )
-                    for event in resp:
-                        try:
-                            if hasattr(event, "output_text"):
-                                delta = getattr(event.output_text, "delta", "")
-                                if delta:
-                                    yield f"data: {delta}\n\n"
-                            elif event.type == "response.output_text.delta":
-                                delta = getattr(event, "delta", "")
-                                if delta:
-                                    yield f"data: {delta}\n\n"
-                        except Exception:
-                            continue
-                    yield "data: [DONE]\n\n"
-                except Exception as e:
-                    yield f"data: [ERROR] {str(e)}\n\n"
-            return StreamingResponse(event_generator(), media_type="text/event-stream")
+            if hasattr(search_provider, "stream_search"):
+                return StreamingResponse(
+                    search_provider.stream_search(
+                        manuscript_text=manuscript_text,
+                        max_results=max_results,
+                        focus_pubmed=True,
+                        pdf_base64=provider_pdf,
+                    ),
+                    media_type="text/event-stream"
+                )
+            else:
+                # Fallback if stream requested but not supported
+                print(f"[WARN] Provider {provider} requested with stream but stream_search not implemented")
         
         loop = asyncio.get_event_loop()
         try:

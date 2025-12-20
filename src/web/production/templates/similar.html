@@ -175,23 +175,94 @@
         }
         
         const formData = new FormData(searchForm);
+        const provider = formData.get('provider');
         
         loadingText.textContent = 'Searching for similar papers...';
         loadingOverlay.classList.add('active');
+        resultsContainer.innerHTML = `<div class="card text-center" style="padding: 3rem;"><p class="text-muted">Searching...</p></div>`;
         
         try {
+            const useStream = provider === 'openai';
+            const headers = useStream ? { 'x-stream': 'true' } : {};
+            
             const response = await fetch('/api/similar/find', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                headers: headers
             });
             
-            const data = await response.json();
-            
-            if (data.success) {
-                displayResults(data);
+            if (useStream) {
+                // Handle SSE Stream
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let reasoningText = "";
+                let finalData = null;
+                
+                // create reasoning container
+                resultsContainer.innerHTML = `
+                    <div class="card mb-3" style="background: var(--bg-secondary); border-left: 3px solid var(--accent-primary);">
+                        <div class="card-body">
+                            <h5 style="margin-top:0; font-size: 0.9rem; color: var(--accent-primary);">🧠 Reasoning Process</h5>
+                            <div id="reasoning-content" style="font-family: monospace; font-size: 0.85rem; color: var(--text-secondary); white-space: pre-wrap; max-height: 300px; overflow-y: auto;">Thinking...</div>
+                        </div>
+                    </div>
+                `;
+                const reasoningContent = document.getElementById('reasoning-content');
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const dataStr = line.slice(6);
+                            if (dataStr === '[DONE]') break;
+                            if (dataStr.startsWith('[ERROR]')) {
+                                throw new Error(dataStr);
+                            }
+                            
+                            try {
+                                const event = JSON.parse(dataStr);
+                                if (event.type === 'delta') {
+                                    reasoningText += event.content || "";
+                                    reasoningContent.textContent = reasoningText;
+                                    // Auto scroll to bottom
+                                    reasoningContent.scrollTop = reasoningContent.scrollHeight;
+                                } else if (event.type === 'result') {
+                                    finalData = event;
+                                } else if (event.type === 'error') {
+                                    throw new Error(event.message);
+                                }
+                            } catch (err) {
+                                // console.warn("Failed to parse event", err);
+                            }
+                        }
+                    }
+                }
+                
+                if (finalData) {
+                     // Wait a moment so user sees the "thinking" finish
+                     setTimeout(() => {
+                        displayResults(finalData);
+                        // Keep reasoning visible but collapsed or above results?
+                        // Let's prepend reasoning back to results if we want, or just replace.
+                        // For now we replace, but maybe add reasoning string to data for displayResults to show?
+                     }, 500);
+                }
+                
             } else {
-                throw new Error(data.detail || 'Search failed');
+                // Standard JSON response
+                const data = await response.json();
+                if (data.success) {
+                    displayResults(data);
+                } else {
+                    throw new Error(data.detail || 'Search failed');
+                }
             }
+            
         } catch (error) {
             alert('Error: ' + error.message);
         } finally {
