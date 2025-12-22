@@ -37,10 +37,19 @@ class OpenAISearchProvider(SearchProvider):
 Instructions:
 - Use the manuscript context below to infer topic/methods; do not ask the user anything.
 - Search PubMed (and Scholar if helpful) and return exactly {max_results} peer-reviewed papers.
-- For each paper include: Title; Authors; PMID (if PubMed); DOI; Journal; Year; Why it's relevant (1–2 lines); URL.
 - Prefer similar methodology, same research question, recent work. If unsure, still pick the best matches.
-- Output only the papers; no preamble or follow-up questions.
-- If context is limited, make reasonable assumptions and still return papers.
+- Output ONLY the papers using the EXACT format below (no preamble):
+
+Format for each paper:
+## 1. Short Title
+**Title:** [Full Title]
+**Authors:** [Author1, Author2, et al.]
+**Journal:** [Journal Name]
+**Year:** [Year]
+**PMID:** [digits]
+**DOI:** [doi string]
+**URL:** [link]
+**Relevance:** [1-2 sentences explaining relevance]
 
 Context:
 [Manuscript Text]
@@ -53,7 +62,7 @@ Context:
                 {
                     "type": "web_search",
                     "user_location": {"type": "approximate"},
-                    "search_context_size": "medium", # User snippet used medium
+                    "search_context_size": "medium", 
                 }
             ]
             if focus_pubmed:
@@ -76,7 +85,7 @@ Context:
                 raise AttributeError("Client has no 'responses' attribute")
 
             response = self.client.responses.create(
-                model="gpt-5-nano", # Forced as per user request
+                model="gpt-5-nano", 
                 input=[{"role": "user", "content": content}],
                 text={
                     "format": {
@@ -169,8 +178,6 @@ Context:
                     yield f"data: {json.dumps({'type': 'delta', 'content': delta})}\n\n"
             
             # Streaming finished, parse results from accumulated text
-            # We can use the existing parsing logic if we create a pseudo-response object
-            # or just call _extract_papers_from_text directly which is easier.
             results = self._extract_papers_from_text(accumulated_text, max_results)
             
             # Serialize results
@@ -190,7 +197,7 @@ Context:
                     } for r in results
                 ],
                 "query_summary": f"Found {len(results)} papers via OpenAI stream",
-                "reasoning": accumulated_text # Return full reasoning text too
+                "reasoning": accumulated_text
             }
             
             yield f"data: {json.dumps(final_data)}\n\n"
@@ -297,24 +304,28 @@ Context:
         """Extract paper information from LLM response text."""
         results = []
         
-        # Try to find paper entries in the text
-        # Look for patterns like numbered lists, titles in bold/quotes, etc.
-        
-        # Pattern for PubMed URLs
+        # Pattern for PubMed URLs for fallback
         pmid_pattern = r'pubmed\.ncbi\.nlm\.nih\.gov/(\d+)'
         pmids_found = re.findall(pmid_pattern, text)
         
-        # Split text into sections that might be individual papers
-        # Look for numbered items or paper titles
-        sections = re.split(r'\n\s*\d+[\.\)]\s+|\n\s*[-•]\s+\*\*', text)
+        # Split text into sections using the ## headers or numbered lists with markers
+        # Updated regex to handle strict format "## 1." or loose formats
+        sections = re.split(r'\n\s*##\s*\d+\.?|\n\s*\d+\.\s+\*\*', text)
         
-        for section in sections[1:max_results+1]:  # Skip first split (before first paper)
-            if len(section) < 50:  # Skip very short sections
+        # Remove empty first split if it contains no content
+        if not sections[0].strip() or "Here are" in sections[0]:
+            sections = sections[1:]
+            
+        for section in sections[:max_results + 3]: # Check a few more chunks just in case
+            if len(section.strip()) < 20: 
                 continue
                 
             result = self._parse_paper_section(section)
             if result:
                 results.append(result)
+        
+        # Limit results
+        results = results[:max_results]
         
         # If we found PMIDs but couldn't parse papers, create basic entries
         if not results and pmids_found:
@@ -332,50 +343,84 @@ Context:
     
     def _parse_paper_section(self, section: str) -> Optional[SearchResult]:
         """Parse a text section into a SearchResult."""
-        # Extract title (usually first line or in quotes/bold)
-        title_match = re.search(r'\*\*([^*]+)\*\*|"([^"]+)"|^([^\n]+)', section)
-        title = ""
-        if title_match:
-            title = title_match.group(1) or title_match.group(2) or title_match.group(3)
-            title = title.strip()
         
-        if not title or len(title) < 10:
+        # Helper to extract value by multiple patterns
+        def extract(patterns):
+            for pat in patterns:
+                match = re.search(pat, section, re.IGNORECASE | re.MULTILINE)
+                if match:
+                    # Return the first non-None group
+                    for g in match.groups():
+                        if g: return g.strip()
             return None
+
+        # 1. Title
+        title = extract([
+            r'\*\*Title:?\*\*[:\s]*(.+)',
+            r'Title:[:\s]*(.+)',
+            r'\*\*([^*]+)\*\*',  # Fallback: Just bold text at start (risky but common)
+            r'^(.+)\n'           # Fallback: First line
+        ])
         
-        # Extract PMID
-        pmid_match = re.search(r'PMID[:\s]*(\d+)|pubmed\.ncbi\.nlm\.nih\.gov/(\d+)', section, re.I)
-        pmid = pmid_match.group(1) or pmid_match.group(2) if pmid_match else None
+        # 2. PMID
+        pmid = extract([
+            r'\*\*PMID:?\*\*[:\s]*(\d+)',
+            r'PMID:[:\s]*(\d+)',
+            r'pubmed\.ncbi\.nlm\.nih\.gov/(\d+)'
+        ])
         
-        # Extract DOI
-        doi_match = re.search(r'DOI[:\s]*(10\.[^\s]+)|doi\.org/(10\.[^\s]+)', section, re.I)
-        doi = doi_match.group(1) or doi_match.group(2) if doi_match else None
+        # 3. Authors
+        authors_str = extract([
+            r'\*\*Authors?:?\*\*[:\s]*(.+)',
+            r'Authors?:[:\s]*(.+)'
+        ])
+        authors = [a.strip() for a in authors_str.split(',')] if authors_str else []
         
-        # Extract authors
-        authors_match = re.search(r'Authors?[:\s]*([^\n]+)', section, re.I)
-        authors = []
-        if authors_match:
-            authors = [a.strip() for a in authors_match.group(1).split(',')][:5]
+        # 4. Journal / Year / Meta
+        journal = extract([
+            r'\*\*Journal:?\*\*[:\s]*(.+)',
+            r'Journal:[:\s]*(.+)'
+        ])
         
-        # Extract abstract
-        abstract_match = re.search(r'Abstract[:\s]*([^\n]+(?:\n[^\n]+)*)', section, re.I)
-        abstract = abstract_match.group(1).strip()[:500] if abstract_match else ""
+        year_str = extract([
+            r'\*\*Year:?\*\*[:\s]*(\d{4})',
+            r'Year:[:\s]*(\d{4})',
+            r'\((\d{4})\)'
+        ])
         
-        # Extract journal
-        journal_match = re.search(r'Journal[:\s]*([^\n]+)', section, re.I)
-        journal = journal_match.group(1).strip() if journal_match else None
+        # 5. Abstract / Relevance
+        relevance = extract([
+            r'\*\*Relevance:?\*\*[:\s]*(.+)',
+            r'Relevance:[:\s]*(.+)',
+            r'\*\*Why it\'s relevant:?\*\*[:\s]*(.+)'
+        ])
         
-        # Build URL
-        url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else ""
-        if not url and doi:
-            url = f"https://doi.org/{doi}"
+        # 6. URL
+        url = extract([
+            r'\*\*URL:?\*\*[:\s]*(https?://[^\s]+)',
+            r'URL:[:\s]*(https?://[^\s]+)',
+            r'(https?://pubmed\.ncbi\.nlm\.nih\.gov/\d+)',
+            r'(https?://doi\.org/[^\s]+)'
+        ])
         
+        # Validation: Must have at least a Title or valid URL/PMID
+        if not title and not pmid and not url:
+            return None
+            
+        if not title: 
+            title = f"Article {pmid}" if pmid else "Unknown Title"
+        
+        if not url:
+            if pmid: url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+            
         return SearchResult(
             title=title,
-            authors=authors,
-            abstract=abstract,
+            authors=authors[:5], # Limit authors
+            abstract=relevance or "", # Use relevance as abstract if real abstract missing
             source="PubMed" if pmid else "Web",
-            url=url,
+            url=url or "",
             pmid=pmid,
-            doi=doi,
             journal=journal,
+            pub_date=year_str,
+            relevance_reason=relevance
         )
